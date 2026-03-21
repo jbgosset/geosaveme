@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "locale": "es",
+    "version": "0.1.0",
+    "note": "Spanish locale. Derived from en.json."
+  },
+  "network": { "active": "Red activa" },
+  "role": { "victim": "Víctima", "witness": "Testigo" },
+  "alert": {
+    "section": { "type": "Tipo de alerta", "responders": "Respondedores cercanos" },
+    "type": {
+      "vigilance": "Vigilancia", "alert": "Alerta", "police": "Policía",
+      "fire": "Bomberos", "danger": "Peligro", "safe": "Estoy a salvo"
+    },
+    "status": {
+      "transmitted": "Alerta transmitida · Enlace seguro establecido",
+      "sent": "Enviado", "delivered": "Entregado", "read": "Leído"
+    },
+    "stress": { "label": "Estrés estimado" },
+    "context": { "placeholder": "Añadir contexto a la alerta…", "hint": "Opcional · según la situación" },
+    "responders": { "watchers": "Vigilantes cercanos", "distance": "Metros (prom.)", "officials": "Oficiales" },
+    "map": { "gps": "GPS · Alta precisión" }
+  },
+  "severity": { "low": "Alerta", "high": "Peligro" },
+  "nav": { "alert": "Alerta", "map": "Mapa", "history": "Historial", "profile": "Perfil" },
+  "hotspot": {
+    "new": "Nueva alerta cercana", "updated": "Alerta actualizada", "closed": "Alerta resuelta",
+    "distance": "a {n} metros",
+    "response": { "flee": "Evitar zona", "neutral": "Neutro", "watch": "Observar", "assist": "Asistir", "call": "Llamar emergencias" }
+  },
+  "history": {
+    "empty": "Sin alertas en tu zona",
+    "filter": { "all": "Todo", "police": "Policía", "fire": "Bomberos", "danger": "Peligro", "vigilance": "Vigilancia" }
+  },
+  "profile": {
+    "anonymous": "Usuario anónimo",
+    "official": { "title": "Cuenta oficial", "district": "Distrito", "subscription": "Suscripción" },
+    "settings": { "notifications": "Notificaciones", "locale": "Idioma", "units": "Unidades de distancia" }
+  },
+  "error": {
+    "location_denied": "Se requiere acceso a la ubicación para usar SAVE ME.",
+    "no_connection": "Sin conexión de red.",
+    "alert_failed": "No se pudo enviar la alerta. Inténtalo de nuevo."
+  }
+}

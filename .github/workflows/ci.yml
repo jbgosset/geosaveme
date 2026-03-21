@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate i18n files
+        run: |
+          node -e "
+            const en = require('./4-code/i18n/en.json');
+            const fr = require('./4-code/i18n/fr.json');
+            const es = require('./4-code/i18n/es.json');
+
+            function getKeys(obj, prefix='') {
+              return Object.entries(obj).flatMap(([k,v]) =>
+                typeof v === 'object' && !Array.isArray(v)
+                  ? getKeys(v, prefix ? prefix+'.'+k : k)
+                  : [prefix ? prefix+'.'+k : k]
+              ).filter(k => !k.startsWith('_meta'));
+            }
+
+            const enKeys = getKeys(en);
+            let errors = 0;
+            for (const locale of [{name:'fr', data:fr}, {name:'es', data:es}]) {
+              const keys = getKeys(locale.data);
+              const missing = enKeys.filter(k => !keys.includes(k));
+              if (missing.length) {
+                console.error('Missing keys in ' + locale.name + '.json:', missing);
+                errors++;
+              }
+            }
+            if (errors) process.exit(1);
+            else console.log('i18n validation passed');
+          "
+
+      - name: Check for hardcoded strings (warn)
+        run: |
+          echo "Scanning for potential hardcoded locale strings in 4-code/screens..."
+          grep -rn "Police\|Pompiers\|Danger\|Victime\|Témoin" 4-code/screens/ \
+            --include="*.tsx" --include="*.ts" --include="*.jsx" --include="*.js" \
+            | grep -v "\.json" | grep -v "// i18n-ok" || true

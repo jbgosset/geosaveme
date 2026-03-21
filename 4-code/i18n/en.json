@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "locale": "en",
+    "version": "0.1.0",
+    "note": "Source of truth. All other locale files are derived from this. Never remove or rename keys — add only. Additions go at the bottom of the relevant section."
+  },
+  "network": {
+    "active": "Network active"
+  },
+  "role": {
+    "victim": "Victim",
+    "witness": "Witness"
+  },
+  "alert": {
+    "section": {
+      "type": "Alert type",
+      "responders": "Nearby responders"
+    },
+    "type": {
+      "vigilance": "Vigilance",
+      "alert": "Alert",
+      "police": "Police",
+      "fire": "Fire & Rescue",
+      "danger": "Danger",
+      "safe": "I'm Safe"
+    },
+    "status": {
+      "transmitted": "Alert transmitted · Secure link established",
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "read": "Read"
+    },
+    "stress": {
+      "label": "Estimated stress"
+    },
+    "context": {
+      "placeholder": "Add context to your alert…",
+      "hint": "Optional · if situation allows"
+    },
+    "responders": {
+      "watchers": "Nearby watchers",
+      "distance": "Metres (avg.)",
+      "officials": "Officials"
+    },
+    "map": {
+      "gps": "GPS · High accuracy"
+    }
+  },
+  "severity": {
+    "low": "Alert",
+    "high": "Danger"
+  },
+  "nav": {
+    "alert": "Alert",
+    "map": "Map",
+    "history": "History",
+    "profile": "Profile"
+  },
+  "hotspot": {
+    "new": "New alert nearby",
+    "updated": "Alert updated",
+    "closed": "Alert resolved",
+    "distance": "{n} metres away",
+    "response": {
+      "flee": "Avoid area",
+      "neutral": "Stay neutral",
+      "watch": "Watch",
+      "assist": "Assist",
+      "call": "Call emergency"
+    }
+  },
+  "history": {
+    "empty": "No alerts in your area",
+    "filter": {
+      "all": "All",
+      "police": "Police",
+      "fire": "Fire & Rescue",
+      "danger": "Danger",
+      "vigilance": "Vigilance"
+    }
+  },
+  "profile": {
+    "anonymous": "Anonymous user",
+    "official": {
+      "title": "Official account",
+      "district": "District",
+      "subscription": "Subscription"
+    },
+    "settings": {
+      "notifications": "Notifications",
+      "locale": "Language",
+      "units": "Distance units"
+    }
+  },
+  "error": {
+    "location_denied": "Location access is required to use SAVE ME.",
+    "no_connection": "No network connection.",
+    "alert_failed": "Alert could not be sent. Please try again."
+  }
+}

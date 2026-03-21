@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "locale": "fr",
+    "version": "0.1.0",
+    "note": "French locale. Derived from en.json. Do not add keys here — add to en.json first."
+  },
+  "network": { "active": "Réseau actif" },
+  "role": { "victim": "Victime", "witness": "Témoin" },
+  "alert": {
+    "section": { "type": "Type d'alerte", "responders": "Répondants à proximité" },
+    "type": {
+      "vigilance": "Vigilance", "alert": "Alerte", "police": "Police",
+      "fire": "Pompiers", "danger": "Danger", "safe": "En sécurité"
+    },
+    "status": {
+      "transmitted": "Alerte transmise · Lien sécurisé établi",
+      "sent": "Envoyé", "delivered": "Reçu", "read": "Lu"
+    },
+    "stress": { "label": "Stress estimé" },
+    "context": { "placeholder": "Ajouter un contexte…", "hint": "Optionnel · selon situation" },
+    "responders": { "watchers": "Vigies proches", "distance": "Mètres (moy.)", "officials": "Officiels" },
+    "map": { "gps": "GPS · Haute précision" }
+  },
+  "severity": { "low": "Alerte", "high": "Danger" },
+  "nav": { "alert": "Alerte", "map": "Carte", "history": "Historique", "profile": "Profil" },
+  "hotspot": {
+    "new": "Nouvelle alerte à proximité", "updated": "Alerte mise à jour", "closed": "Alerte résolue",
+    "distance": "à {n} mètres",
+    "response": { "flee": "Éviter la zone", "neutral": "Rester neutre", "watch": "Observer", "assist": "Aider", "call": "Appeler les secours" }
+  },
+  "history": {
+    "empty": "Aucune alerte dans votre secteur",
+    "filter": { "all": "Tout", "police": "Police", "fire": "Pompiers", "danger": "Danger", "vigilance": "Vigilance" }
+  },
+  "profile": {
+    "anonymous": "Utilisateur anonyme",
+    "official": { "title": "Compte officiel", "district": "District", "subscription": "Abonnement" },
+    "settings": { "notifications": "Notifications", "locale": "Langue", "units": "Unité de distance" }
+  },
+  "error": {
+    "location_denied": "L'accès à la localisation est requis pour utiliser SAVE ME.",
+    "no_connection": "Pas de connexion réseau.",
+    "alert_failed": "L'alerte n'a pas pu être envoyée. Réessayez."
+  }
+}
