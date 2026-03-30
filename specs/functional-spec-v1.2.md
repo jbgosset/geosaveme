@@ -146,37 +146,44 @@ User trust levels reflect identity verification and accountability. They are dis
 
 ---
 
-## 3. Use Cases - to be refined
+## 3. Use Cases
 
 ### 3.1 Victim
 
-#### of an Accident
+The user is the victim of an event that is already or could become dangerous, he looks for support. He opens the app and tap the alert button. The hotspot is created at his GPS position is broadcasted to nearby members of the network. Officials see the pin on the map. If a call comes in matching the number, the dispatcher clicks the pin to see the full context. What could trigger the use of this app on the victim's perspective :
+* Just feeling unsecure wanting to check local presence
+* Being insulted on racial, sexual, religious or any purposes
+* Being touched inapropriately with a sexual context
+* Being injured due to roadside accident
+* Having a medial emergency
+* Aggressed or assaulted, with or without weapon
+* Fire situation
+* Others
 
-The user is injured and unable to call. They open the app and tap the alert button. The hotspot is created at their GPS position. Officials see the pin on the map. If a call comes in matching the number, the dispatcher clicks the pin to see full context.
+Option : To monitor the feeling of emergency the victim can tap rapidly on the screen, which frequency is logged as a stress indicator.
 
-#### of an Assault
+Option : At hotspot opening the sound could start being recorded, and only shared with officials.
 
-The user is being assaulted. They tap rapidly — the frequency of taps is logged as a stress indicator. They may not be able to add context. The hotspot notifies the network. Officials receive the emitter's phone number if they have the patrol subscription.
+Depending on the situation victims may not be able to add context. This is where the witness can participate.
 
 ### 3.2 Witness
 
-#### to an Accident
+The user is witnessing an event. If this event has already been reported on the platform he can confirm his presence on the hotspot and add context if able to share specifics of the situation (number of people, injuries, presence of a weapon...). Nearby users are notified that the hotspot has been witnessed.
+If the hotspot did not exit prior to the event then his alert emission combined with the witness status creates a new hotspot which is broadcasted. 
+Exemple given, the user sees an assault in progress. He emits an alert discreetly. Nearby bystanders are warned. Police patrols of the sector concerned receive the hotspot. The user can add context if safe to do so.
 
-The user sees a road accident or medical emergency. They open the app, select "Fire" or "Police", optionally add context (e.g. number of people involved, presence of injuries), and emit the alert. Nearby users are notified. Official responders receive the location and can correlate with incoming 112/999/911 calls.
 
-#### to an Assault
-
-The user sees an assault in progress. They emit an alert discreetly. Nearby bystanders are warned. Police patrols nearby receive the hotspot. The user can add context (aggressor description, presence of a weapon) if safe to do so.
-
-### 3.3 Security Goup of a Victim / Witness
+### 3.3 Victim / Witness's Security Goup
 
 The emitter opts to notify their circle. The friend receives a push (if they have the app) or a link. They see the alert status in real time and know help is on the way.
+To be part of a user's security group he must have scanned the geosaveme QR code of the user the alert will be broadcasted to.
+This could be a parent, a friend, a lover, any trustworthy person deemed to be alerted. 
 
 ### 3.4 Officials
 
 #### on Patrol
 
-The officer receives the hotspot notification on their mobile. They see the type of alert, the number of civilian followers, and (with subscription) the emitter's phone number. They navigate to the scene. Once on site, they can qualify the hotspot and broadcast a localized message.
+The officer receives the hotspot notification on their mobile. They see the type of alert, the number of civilian followers, and the emitter's phone number if authorized via authentification and subscription. They navigate to the scene. Once on site, they can qualify the hotspot and broadcast a localized message.
 
 #### in a Surveillance Center
 
@@ -186,7 +193,7 @@ The dispatcher sees a pin appear on their district map when an alert is emitted.
 
 #### Walking Nearby
 
-The user receives a notification: "Alert open 200m from your location." They choose their response. If they engage, they appear as a watcher dot on the map (position approximate). Their presence count is shown to the victim.
+The user receives a notification: "Alert opened 200m from your location." They choose their response. If they engage, they appear as a watcher dot on the map (position approximate). Their presence count is shown to the victim.
 
 #### at Home
 
@@ -203,22 +210,10 @@ These are the primary action buttons presented to the user when opening an alert
 | Key | Label (EN) | Severity | Description |
 |-----|-----------|----------|-------------|
 | `secure` | Secure | 0 | Normal mode or back to safe place and mood |
-| `vigilance` | Vigilance | 1 | Low-level concern, potential risk, incivility |
-| `alert` | Alert | 2 | Explicit request for intervention, danger confirmed |
-| `police` | Police | 3 | Requires law enforcement response |
-| `fire` | Fire & Rescue | 3 | Requires fire brigade / SAMU response |
-| `danger` | Danger | 4 | Immediate high danger, life at risk |
-
-### 4.2 Alert Levels (Operational)
-
-Alert levels define the operational mode and emergency routing of an alert. They do not map 1:1 to UI trigger types — an emitter may escalate or de-escalate after initial emission.
-
-| Level | Mode | Description |
-|---|---|---|
-| **Vigilance** | Anonymous | Signal to the network without requesting intervention. Severity is low or negligible — e.g. incivility or a perceived sense of insecurity. May escalate or be the precursor to an accident. |
-| **Alert** | Anonymous | An explicit request for assistance. Danger is established but without calling emergency services — either because the situation doesn't permit it, or because a call has already been placed on the hotspot. The alert can be precisely qualified. |
-| **Rescue** | Identified via PSAP | Triggers a direct emergency call to the PSAP with the hotspot reference. The call is indicated on the hotspot; qualification is possible after the fact. |
-| **Post-event** | Voluntary | The urgency has passed but the incident merits being recorded for statistical purposes. Does not trigger a hotspot or alert broadcast. Location is provided voluntarily after the fact. |
+| `alert` | Alert | 1 | Low-level concern, potential risk, incivility, no physical interaction |
+| `danger` | Danger | 2 | Explicit request for intervention, danger confirmed |
+| `police` | Police Call | 3 | Requires law enforcement response |
+| `fire` | Rescue Call| 3 | Requires fire brigade or SAMU response |
 
 ### 4.3 Alert Qualification
 
@@ -228,74 +223,20 @@ Qualification is an **asynchronous process**. The alert is emitted immediately u
 
 | Dimension | Options / Examples |
 |---|---|
-| **Severity** | At Vigilance level: insecurity (perceived), incivility, sanitation. At Alert/Rescue level: assault, theft, rape, accident. |
-| **Target** | Verbal (no contact), physical (with contact), person, building, vehicle… |
-| **Fact** | Insult, noise nuisance, exhibitionism, sexual touching, pickpocketing, burglary… |
+| **Severity** | At alert level (1): insecurity (perceived), incivility. At danger(2) or call level (3): assault, theft, rape, accident. |
+| **Target** | Person or object (building, vehicle…), if personn verbal (no contact) or physical (with contact)|
+| **Fact** | Insult, roamer, noise nuisance, exhibitionism, sexual touching, pickpocketing, burglary… |
 | **Perception** | Flags a sexual, racial, religious or homophobic dimension to the incident. |
 | **Aggravating factors** | With threats, intoxicated or drugged individual, in a group, presence of a weapon, presence of injured persons. |
 | **Public mission** | Post-qualification category: security, public order, or sanitation in public space. |
-
-#### 4.3.2 Vigilance Level — Qualification Matrix
-
-**Perceived Insecurity**
-*No further qualification required — the feeling itself constitutes the signal.*
-
-**Incivility (Public Order)**
-
-| Target | Fact | Perception | Aggravating factors | Examples |
-|---|---|---|---|---|
-| Verbal (no contact) | Insult | Sexual | With threat | "sale pute" |
-| | | Racial | Intoxicated / drugged | "sale noir", "sale arabe" |
-| | | Religious | In a group | "sale juif" |
-| | | Homophobic | Presence of a weapon | Middle finger, "fils de pute"… |
-| Verbal (no contact) | Noise nuisance | — | — | — |
-| Verbal (no contact) | Exhibitionism | — | — | — |
-| Physical (with contact) | Sexual touching | — | — | Groping, frotteurism |
-
-
-#### 4.3.3 Alert / Rescue Level — Qualification Matrix
-
-**Assault**
-
-| Target | Fact | Aggravating factors | Notes |
-|---|---|---|---|
-| Physical (with contact) | Assault and battery | Presence of a weapon | pistol, submachine gun, knife, bat, glass bottle… |
-| | | Presence of injured persons | sub-qualification TBD |
-| | | Intoxicated / drugged | |
-| | | In a group | |
-
-**Rape / Sexual Violence**
-
-| Aggravating factor | Notes |
-|---|---|
-| In a group | → number of persons TBD |
-
-**Theft**
-
-| Fact |
-|---|
-| Pickpocketing |
-| Burglary |
-| Shoplifting |
-| Armed robbery |
-
-**Accident**
-
-| Target | Fact | Aggravating factors |
-|---|---|---|
-| Person | Fall | — |
-| Building | Fire | Presence of injured persons (sub-qualification TBD) |
-| | Gas explosion | |
-| | Structural collapse | |
-| | Flooding | |
-| Vehicle | Pile-up | Presence of injured persons (sub-qualification TBD) |
-| | Fire | |
 
 #### 4.3.4 Other / Special Cases
 
 - **Demonstrations** — Mass events present specific alert dynamics; dedicated qualification to be defined.
 - **Pre-planned safety** — A user wishes to alert their friends at a given date and time.
 - **Safe escort** — "Guardian angel" scheme or courteous accompaniment for users walking home.
+- **Post event** — An alert or danger is reported post event for statistical purpose.
+- **Registering a tracker** - And being alerted when the tracker enters a hotspot
 
 ### 4.4 Alert Modes
 
@@ -303,6 +244,7 @@ Qualification is an **asynchronous process**. The alert is emitted immediately u
 |---|---|
 | **Ghost** | The user does not want the alert broadcast locally to avoid counter-aggression. The alert is sent only to security professionals. |
 | **Stealth** *(pro only)* | The security professional does not wish to be shown on the map near the intervention area, to prevent the aggressor from modifying their behaviour. |
+| **Private** | Alerts and hotspots are only broadcasted to Security Groups |
 | **Remote / Delayed** | Activating the alert does not immediately create a hotspot. Location is incorporated into the alert qualification after the fact. |
 
 ### 4.5 Issuer Position
@@ -337,26 +279,34 @@ Low-credibility alerts may be filtered by the network to avoid saturation. This 
 
 **Cold location** (background, inactive users)
 - Approximate accuracy (network-level)
-- Updated: every hour if still, every 10 minutes if moving
-- Purpose: identify users near a new hotspot to notify them
+- Triggered permanently to be selected for hotspot broadcast based on location
+- Updated: location is sent only if move is detected, once moving location is updated every 10 minutes
+- Purpose: identify users near a new hotspot to be able to notify them
+- Permission : must be given by the user to receive hotspots creation, if not given the user can stil emit alerts
 
 **Hot location** (foreground, active users / followers)
 - High accuracy (GPS)
+- Triggered only when arlerting, following a hotspot or entering a vigilance areay. It is also used for patrol and officials.
 - Updated: every 30 seconds for helpers, every 10 seconds for officials
 - Purpose: real-time tracking within an active hotspot
+- Permission : is given at application first configuration for later alert triggering
 
 **Position payload**
 ```json
 {
-  "userID": "hash(deviceID)",
+  "mobileID": "hash(deviceID)",
+  "hotspotID": "hash(deviceID+timestamp)",
+  "source": "base | alert | follower | patrol",
   "position": {
+    "type": "cold | hot",
     "lat": 48.8566,
     "lng": 2.3522,
     "accuracy": 12.5,
-    "timestamp": "2024-03-01T14:32:00Z"
+    "timestamp": "2024-03-01T14:32:00Z",
+    "provider" : "GPS_PROVIDER | NETWORK_PROVIDER | PASSIVE_PROVIDER"
   },
-  "provider": "GPS_PROVIDER | NETWORK_PROVIDER | PASSIVE_PROVIDER",
-  "status": "still | onslowmove | onfastmove | backin"
+  "cinetic": "still | onslowmove | onfastmove",
+  "transportation": "walk | bike | car | train"
 }
 ```
 
@@ -369,16 +319,19 @@ Low-credibility alerts may be filtered by the network to avoid saturation. This 
 
 ### 5.1 Groups
 
-- Any user can create a group as an administrator, name it, and share administrator rights with another member.
-- Group membership is done by scanning the group's QR code in the presence of an administrator — joining must therefore take place in person.
-- Within a group, users may choose a pseudonym by which they are identified by other members.
-- The group creator chooses the broadcast mode: alerts sent only to administrators (family, school trips…) or to all members (friends, adult leisure groups…).
-- Alerts are broadcast according to the group's chosen mode — to all members or administrators only.
+- There are 3 levels of membership in a group : owner which is unique, administrator and member
+- Any user can create a group, name it, and share administrators rights with another member, ownership can be transmitted once as unique
+- Group's membership is given by scanning the group's QR code and being validated by the administrator
+- For group's membership, users choose a pseudonym associated to their account by which they are identified by other members
+- The group administrator chooses the broadcast mode: alerts sent only to administrators (family, school trips…) or to all members (friends, adult leisure groups…)
+- Alerts are broadcasted according to the group's chosen mode — to all members or to administrators only
+- Group's administrators receive the accurate location of alerts like officials with public hotspots
+
 
 ### 5.2 Hotspot
 
-- A hotspot is created each time an alert is triggered. It defines a precise geographical perimeter, collects all subsequent alerts raised within that perimeter, and is broadcast to users present in the area at the time of the alert.
-- Upon arriving at a hotspot, an agent validates the reality and relevance of the situation, increasing the hotspot's credibility.
+- A hotspot is created every time an alert is triggered if the user is not already associated with an active hotspot. It defines a precise geographical perimeter, collects all subsequent alerts raised within that perimeter, and is broadcast to users present in the area at the time of the alert.
+- Upon arriving at a hotspot, an agent validates the reality and relevance of the situation, increasing the hotspot's credibility and its followers.
 - A hotspot generates a collaborative communication thread shared exclusively with professionals and first responders.
 
 ### 5.3 Vigilance Zone
@@ -402,8 +355,8 @@ Defines a geographical area within which an official security agent receives all
 ### 6.2 Profile
 
 - Public users: no profile screen (anonymous)
-- Officials: login screen → account dashboard → district / subscription info
 - Friends/Family: notification preferences, linked contacts
+- Officials: login screen → account dashboard → district / subscription info
 
 ### 6.3 Alert Emission (Mobile)
 
@@ -424,6 +377,9 @@ Components:
 - Tap "Safe" to close the alert
 - Share button → notify friends via app push or social link
 
+![System Overview](assets/mobile001_send_alert.svg)
+*Figure 3 — Mobile Screen 001 : basic sending alerts*
+
 ### 6.4 Alert Reception (Mobile)
 
 **Bystander / follower view**
@@ -434,13 +390,22 @@ Components:
 - Map showing hotspot (emitter position approximate)
 - Watcher count for the hotspot
 
+| Alert notification | Hotspot map |
+|---|---|
+|![Alert Reception](assets/mobile002_alert_list.svg)|![Perimeter Surveillance Mobile](assets/mobile003_map.svg)|
+|*Figure 4 — Mobile Screen 002 : alert reception*|*Figure 5 — Mobile Screen 003 : perimeter surveillance (mobile)*|
+
 ### 6.5 Perimeter Surveillance (Web / Official)
 
 - Full district map
-- Hotspot pins with type icon and severity color
+- Hotspot pins with icon type  and severity color
 - Click pin → alert details, emitter phone number (subscription), follower list
 - Phone number matching: incoming call number highlights the matching pin
-- Broadcast message composer for a hotspot area
+- Broadcast message to follower of a hotspot area for security guidance
+
+
+![Perimeter Surveillance Web](assets/screen001_map.svg)
+*Figure 6 — Screen 001 : perimeter surveillance (surveillance center)*
 
 ### 6.6 History
 
@@ -501,7 +466,7 @@ Examples:
 "alert.type.safe":         "I'm Safe",
 "alert.status.transmitted": "Alert transmitted · Secure link established",
 "alert.stress.label":      "Estimated stress",
-"alert.context.placeholder": "Add context to your alert…",
+"alert.context.placeholder": "Add context",
 "alert.context.hint":      "Optional · if situation allows",
 "alert.responders.watchers": "Nearby watchers",
 "alert.responders.distance": "Metres (avg.)",
