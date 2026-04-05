@@ -346,17 +346,47 @@ Defines a geographical area within which an official security agent receives all
 
 ## 6. Screens & Flows
 
-### 6.1 Cinematics / Onboarding
+### 6.1 Onboarding (first connexion)
 
-- App open → permission requests (location background, notifications)
-- Anonymous ID generated from device hash
-- Role selection not required at onboarding — determined by context
+- App opens for anonymous :
+    - Users do not need to authenticate
+      - ID is generated from device hash for alerts communication
+      - Personnal authentication is only required for watchers and officials, watchers accept to be authenticated as they are part of the vigilance network
+  - Permission request for locations :
+      - background location is rough till entering a vigilance area around a hotspot
+        - background location history is never saved only the last location is kept for matching purpose
+        - background location is optimised to avoid battery consumption with minimalist updates
+      - accurate location when entering the vigilence and hotspot sequence
+        - a notification is sent to ask for specific accurate location permission 
+        - location history in a hotspot is saved if agreed in the user's profile
+        - accurate location in a hotspot is never shared except with officials
+  - Permission request for notifications :
+    - if spotted in a hotspot
+    - if member of a security group broadcasting an alert
+    - for officials messages broadcast
+
 
 ### 6.2 Profile
 
-- Public users: no profile screen (anonymous)
-- Friends/Family: notification preferences, linked contacts
-- Officials: login screen → account dashboard → district / subscription info
+- Anonymous :
+  - ID (generated from device hash)
+  - Apps authorisation
+    - I agree to broadcast my alerts to the nearby members of the community
+    - I agree to receive alerts when entering hotspots
+  - My Security group (sender) :
+    - my default security group pseudo 
+    - QR code of my security group
+    - members of my security group I validated with the pseudo I gave them
+  - Security groups I am member of (receiver) :
+    - default pseudo of the groups I may receive notification from
+- Officials :
+  - Official ID (first and second names, title)
+  - Official departement ID (name, adress)
+  - District ID (name, area)
+
+
+![System Overview](assets/screen003_profile.svg)
+*Figure 3 — Screen 003 : user profile*
 
 ### 6.3 Alert Emission (Mobile)
 
@@ -378,7 +408,7 @@ Components:
 - Share button → notify friends via app push or social link
 
 ![System Overview](assets/mobile001_send_alert.svg)
-*Figure 3 — Mobile Screen 001 : basic sending alerts*
+*Figure  — Mobile Screen 001 : basic sending alerts*
 
 ### 6.4 Alert Reception (Mobile)
 
