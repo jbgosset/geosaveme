@@ -15,9 +15,9 @@ jobs:
       - name: Validate i18n files
         run: |
           node -e "
-            const en = require('./4-code/i18n/en.json');
-            const fr = require('./4-code/i18n/fr.json');
-            const es = require('./4-code/i18n/es.json');
+            const en = require('./design/i18n/en.json');
+            const fr = require('./design/i18n/fr.json');
+            const es = require('./design/i18n/es.json');
 
             function getKeys(obj, prefix='') {
               return Object.entries(obj).flatMap(([k,v]) =>
@@ -43,7 +43,7 @@ jobs:
 
       - name: Check for hardcoded strings (warn)
         run: |
-          echo "Scanning for potential hardcoded locale strings in 4-code/screens..."
-          grep -rn "Police\|Pompiers\|Danger\|Victime\|Témoin" 4-code/screens/ \
+          echo "Scanning for potential hardcoded locale strings in design/screens..."
+          grep -rn "Police\|Pompiers\|Danger\|Victime\|Témoin" design/screens/ \
             --include="*.tsx" --include="*.ts" --include="*.jsx" --include="*.js" \
             | grep -v "\.json" | grep -v "// i18n-ok" || true
