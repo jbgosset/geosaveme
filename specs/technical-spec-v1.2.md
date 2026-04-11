@@ -1,6 +1,6 @@
 # SAVE ME — Technical Specifications
 
-> **Version** 1.2 — English rewrite for international market flexibility  
+> **Version** 1.3 — i18n: added English-first philosophy, key naming convention (moved from functional-spec)  
 > **Base** GeoSaveMe Technical Spec v1.0  
 > **i18n** All user-facing strings referenced by key — see `i18n/en.json`
 
@@ -23,11 +23,11 @@ SAVE ME builds a **bottom-up civilian vigilance network** connecting:
 - People emitting alerts
 - Official security forces
 
-The core insight: most security incidents go unreported because existing tools are binary (do nothing or call emergency services). By surfacing these events into a structured, geolocated network, SAVE ME enables proportional responses at every severity level.
+The core insight: most security incidents go unreported because existing tools are binary (do nothing or call emergency services). By surfacing these events into a structured, geolocated network, GEOSAVEME enables proportional responses at every severity level.
 
 The network operates on two location modes:
 - **Cold** — background, approximate, for inactive users (identifying who is near a new hotspot)
-- **Hot** — foreground, precise, for active users and followers (real-time tracking within a hotspot)
+- **Hot** — foreground, precise, for active users and followers (real-time tracking within a hotspot and its vigilance area)
 
 When a user emits an alert, a **hotspot** is created. The hotspot links all actors: the emitter, nearby civilian followers, and official forces within the district.
 
@@ -38,8 +38,9 @@ When a user emits an alert, a **hotspot** is created. The hotspot links all acto
 ### 2.1 Requirements
 
 - User and follower location tracking (cold + hot)
-- Hotspot alerting: `rescue` / `danger` / `alert` / `vigilance` / `unsecure` / `action`
-- Alert status lifecycle: `sent` → `delivered` → `read`
+- Hotspot victim or witness alerting: `safe` / `unsecure` / `danger` / `call force` / `call fire`
+- Hotspot follower confirmation: `vigilance` / `action` (officials and first responders only)
+- Message status lifecycle: `sent` → `delivered` → `read`
 - Official district management
 - Market-configurable emergency number and official labels
 
@@ -62,24 +63,24 @@ Responsibilities:
 #### Alerts Service
 
 Responsibilities:
-- Manage the list of alerts associated with each hotspot
-- Maintain alert types: `rescue` / `danger` / `alert` / `vigilance` / `unsecure` / `action`
+- Manage the list of alerts associated within each hotspot
+- Maintain alert types: `safe` / `unsecure` / `danger` / `call force` / `call fire`
 - Maintain alert status: `sent` / `delivered` / `read`
 - Update hotspot perimeter when the emitter's position moves
-- Send alerts to subscribers
+- Send notifications to followers
 
 #### Followers Location Service ("Hot")
 
 Responsibilities:
-- Manage follower list per hotspot, typed as `helper` or `force`
+- Manage user list per hotspot, typed as : `vigilance` / `follower` / `watcher` / `first responder` / `official`
 - Prioritize followers: hotspot vs. vigilance area
 - Update follower positions at high throughput
-- Broadcast positions to relevant actors
+- Broadcast locations to relevant actors
 
 #### Users Location Service ("Cold")
 
 Responsibilities:
-- Manage all registered users (helpers and forces)
+- Manage all registered users locations
 - Register approximate background positions
 - Identify users inside hotspot or vigilance perimeters → promote to followers
 - Maintain and update the followers list
@@ -308,6 +309,24 @@ This means:
 - Alert types are `"danger"`, not `"Danger"` or `"Gefahr"`
 - The mobile app and web UI resolve display strings from locale files at render time
 - Adding a new language requires zero backend changes
+
+The app is built **English-first**. The active locale is determined at runtime from device locale, with a manual override available in settings. All user-facing strings must be externalized — never hardcoded in component code.
+
+### Key Naming Convention
+
+Keys follow the pattern `{screen}.{component}.{element}`:
+
+```
+alert.type.police       → "Police"
+alert.type.danger       → "Danger"
+alert.status.transmitted → "Alert transmitted · Secure link established"
+alert.stress.label      → "Estimated stress"
+alert.context.placeholder → "Add context to your alert…"
+nav.alert               → "Alert"
+role.victim             → "Victim"
+```
+
+Add new keys at the bottom of the relevant section in `en.json`. Never rename or remove existing keys — they are public contracts.
 
 ### Locale File Structure
 

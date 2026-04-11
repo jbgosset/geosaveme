@@ -1,6 +1,6 @@
 # SAVE ME — Functional Specifications
 
-> **Version** 2.0 — Merged & expanded (Alert Dimensions · Broadcasting & Statistics · Use Cases Taxonomy)  
+> **Version** 2.1 — i18n Architecture section moved to technical-spec-v1.2.md §4  
 > **Original** JB.Gosset (FR) · **Translated & expanded** for EN-first strategy  
 > **i18n note** All user-facing strings are keyed. See `i18n/` directory for locale files.
 
@@ -15,9 +15,8 @@
 5. [Broadcasting & Perimeter](#5-broadcasting--perimeter)
 6. [Screens & Flows](#6-screens--flows)
 7. [Statistics & Reporting](#7-statistics--reporting)
-8. [i18n Architecture](#8-i18n-architecture)
-9. [Open Questions](#9-open-questions)
-10. [Appendix — Emergency Services Reference](#10-appendix--emergency-services-reference)
+8. [Open Questions](#8-open-questions)
+9. [Appendix — Emergency Services Reference](#9-appendix--emergency-services-reference)
 
 ---
 
@@ -43,6 +42,12 @@ The platform must not favour any preconceived notion of aggressors or users. Thi
 
 #### Anonymity
 Users are anonymous — only their devices are identified. The identity of first responders and security forces is known to the platform but is never shared publicly. When an emergency call is placed, standard identification mechanisms take over without any link to the platform.
+
+#### Minimalism
+We don't want to track you, any locations or personal information is used for security purposes only, no profiing or hidden marketing. Any personal information that would had been required during events would be deleted afterward.
+
+#### Auditability
+All our code base is public for security and confidence purposes.
 
 ### General Principles
 
@@ -140,9 +145,9 @@ User trust levels reflect identity verification and accountability. They are dis
 | Title | Description |
 |---|---|
 | **Anonymous** | Default status for all users. No identity disclosed. |
-| **Non-anonymous** | Has agreed to share their identity, strengthening trust and credibility. |
+| **Watcher** | Non-anonymous user, has agreed to share their identity, strengthening trust and credibility. |
 | **First responder** | Validated via membership of a recognised association (Red Cross, VISOV, physician…). Not anonymous. |
-| **Security professional** | Accredited by a public or private security body (Police, Gendarmerie, Fire service, SAMU…). |
+| **Official** | Security professional accredited by a public or private security body (Police, Gendarmerie, Fire service, SAMU…). |
 
 ---
 
@@ -210,7 +215,7 @@ These are the primary action buttons presented to the user when opening an alert
 | Key | Label (EN) | Severity | Description |
 |-----|-----------|----------|-------------|
 | `secure` | Secure | 0 | Normal mode or back to safe place and mood |
-| `alert` | Alert | 1 | Low-level concern, potential risk, incivility, no physical interaction |
+| `unsecure` | Unsecure | 1 | Low-level concern, potential risk, incivility, no physical interaction, just feeling unsecure|
 | `danger` | Danger | 2 | Explicit request for intervention, danger confirmed |
 | `police` | Police Call | 3 | Requires law enforcement response |
 | `fire` | Rescue Call| 3 | Requires fire brigade or SAMU response |
@@ -235,7 +240,8 @@ Qualification is an **asynchronous process**. The alert is emitted immediately u
 - **Demonstrations** — Mass events present specific alert dynamics; dedicated qualification to be defined.
 - **Pre-planned safety** — A user wishes to alert their friends at a given date and time.
 - **Safe escort** — "Guardian angel" scheme or courteous accompaniment for users walking home.
-- **Post event** — An alert or danger is reported post event for statistical purpose.
+- **Post event** — An alert or danger is reported post event because it was not possible to do it when occuring.
+- **Statistics** — It could also be for statistical purpose, let say an agression or a theft happened, you did not react when happening but you want to report it for others awareness, let's post it. 
 - **Registering a tracker** - And being alerted when the tracker enters a hotspot
 
 ### 4.4 Alert Modes
@@ -261,7 +267,7 @@ Credibility scores are transmitted to security forces only, to help them assess 
 | Score | Profile |
 |---|---|
 | **Pro** | All certified first responders and official security professionals. |
-| **2** | Has sent alerts corroborated by simultaneous alerts from others, with the hotspot confirmed by security services. |
+| **2** | Has sent alerts corroborated by simultaneous alerts from other members, with the hotspot confirmed by security services. |
 | **1** *(default)* | Any user who has not yet had occasion to interact with the application. |
 | **0.5** | Statistically excessive alert submissions not corroborated by simultaneous alerts from others. |
 | **0** | Issuer of an alert on a hotspot subsequently qualified as a false alarm by security forces. |
@@ -279,7 +285,7 @@ Low-credibility alerts may be filtered by the network to avoid saturation. This 
 
 **Cold location** (background, inactive users)
 - Approximate accuracy (network-level)
-- Triggered permanently to be selected for hotspot broadcast based on location
+- Triggered permanently to be able to be selected when hotspot popping nearby and being broadcasted to the right users
 - Updated: location is sent only if move is detected, once moving location is updated every 10 minutes
 - Purpose: identify users near a new hotspot to be able to notify them
 - Permission : must be given by the user to receive hotspots creation, if not given the user can stil emit alerts
@@ -287,7 +293,7 @@ Low-credibility alerts may be filtered by the network to avoid saturation. This 
 **Hot location** (foreground, active users / followers)
 - High accuracy (GPS)
 - Triggered only when arlerting, following a hotspot or entering a vigilance areay. It is also used for patrol and officials.
-- Updated: every 30 seconds for helpers, every 10 seconds for officials
+- Updated: every 30 seconds for helpers, every 10 seconds for officials, should be depending on battery level
 - Purpose: real-time tracking within an active hotspot
 - Permission : is given at application first configuration for later alert triggering
 
@@ -319,26 +325,46 @@ Low-credibility alerts may be filtered by the network to avoid saturation. This 
 
 ### 5.1 Groups
 
-- There are 3 levels of membership in a group : owner which is unique, administrator and member
-- Any user can create a group, name it, and share administrators rights with another member, ownership can be transmitted once as unique
-- Group's membership is given by scanning the group's QR code and being validated by the administrator
-- For group's membership, users choose a pseudonym associated to their account by which they are identified by other members
-- The group administrator chooses the broadcast mode: alerts sent only to administrators (family, school trips…) or to all members (friends, adult leisure groups…)
-- Alerts are broadcasted according to the group's chosen mode — to all members or to administrators only
-- Group's administrators receive the accurate location of alerts like officials with public hotspots
+Group's purpose is to broadcast alerts independently from location, meaning that people should know about any issue happening event when not in the vicinity of the event. For exemple you may want your family to be aware of any troubling situation. It could be during a summer camp that the camp counselors want to be notified if any disturbing situation occurs. Another case is a festival or music event, the security team would like to be notified even if not on site.
+
+They are 2 kind of groups :
+ - My Security Group : your own user security group to decide to whom you will communicate outside the hotspot area (mainly your family and close friends)
+ - Extended Security Group : the second kind of group are made on purpose for security teams during events or for organisations
+
+General rules about groups :
+- Users choose a pseudonym associated to their account by which they are identified by other members
+- Group's membership is granted by scanning the group's QR code and being validated by the administrator
+- There are 3 levels of membership in a group : owner which is unique, administrator and member. Owners are also administrators.
+- All levels of membership can emit an alert in a group
+- Users can choose to quiet a group they belong to or delete groups at anytime
+- The group administrators choose the broadcast mode:
+  - Audience : alerts sent to administrators or to all members (not relevant for user own security group)
+  - Level : alerts sent at unsecure or danger level
+- The group administrators choose the joining mode :
+  - Free mode : let say for mass event
+  - Normal mode : with request validation
+- Any alerts emmitted is broadcasted to all members and/or administors of the group, depending on the broadcast mode option.
+
+- My Own Group (as an emitter only)
+  - All users are owner and administrator of their own security group, administration of these groups cannot be extended.
+  - I can remove anytime and whoever I want from my group, I can also decide not to alert a member momentaly.
+
+- Extended Security Group (as an emitter and/or receiver)
+  - Any users can create a group, name it, and share administrators rights with another member, ownership can be transmitted once as being unique.
+  - Group's administrators receive the accurate location of alerts like officials with public hotspots
 
 
 ### 5.2 Hotspot
 
 - A hotspot is created every time an alert is triggered if the user is not already associated with an active hotspot. It defines a precise geographical perimeter, collects all subsequent alerts raised within that perimeter, and is broadcast to users present in the area at the time of the alert.
-- Upon arriving at a hotspot, an agent validates the reality and relevance of the situation, increasing the hotspot's credibility and its followers.
+- Upon arriving at a hotspot, any users including officials and watchers validate the reality and relevance of the situation, increasing the hotspot's credibility for its followers.
 - A hotspot generates a collaborative communication thread shared exclusively with professionals and first responders.
 
 ### 5.3 Vigilance Zone
 
 The vigilance zone is a slightly wider perimeter around the hotspot. It anticipates the movement of users through the hotspot and triggers more frequent location updates for those within it.
 
-### 5.4 Sector
+### 5.4 Sector or Force's District
 
 Defines a geographical area within which an official security agent receives all alerts, can broadcast messages, and qualify hotspots.
 
@@ -348,19 +374,24 @@ Defines a geographical area within which an official security agent receives all
 
 ### 6.1 Onboarding (first connexion)
 
-- App opens for anonymous :
-    - Users do not need to authenticate
-      - ID is generated from device hash for alerts communication
-      - Personnal authentication is only required for watchers and officials, watchers accept to be authenticated as they are part of the vigilance network
-  - Permission request for locations :
-      - background location is rough till entering a vigilance area around a hotspot
-        - background location history is never saved only the last location is kept for matching purpose
+- App opens :
+    - Authentication
+      - Basic anonymous users
+        - Do not need to authenticate, ID is generated from device hash for alerts communication
+      - Watchers
+        - Authentication is required, they accept to be authenticated as they are part of the vigilance network sharing their email and name from another authentication service (Google, Microsoft...)
+      - Officials
+          - Authentication is required for officials, a dedicated authentication service will be set up, could be linked with tier private services
+  - Location permission request
+      - Background location (cold) is rough till entering a vigilance area around a hotspot
+        - background location history is never saved only the last location is kept for hotspot matching purpose
         - background location is optimised to avoid battery consumption with minimalist updates
-      - accurate location when entering the vigilence and hotspot sequence
-        - a notification is sent to ask for specific accurate location permission 
+      - Hotspot accurate location is required when entering the vigilence and hotspot sequence
+        - accurate location in a hotspot is never shared with the hotspot, except with officials
+        - a notification is sent to ask for specific accurate location permission if not given previously
         - location history in a hotspot is saved if agreed in the user's profile
-        - accurate location in a hotspot is never shared except with officials
-  - Permission request for notifications :
+      - Officals accurate location is required but hidden depending on chosen mode by officials stealth or public 
+  - Permission request for notifications
     - if spotted in a hotspot
     - if member of a security group broadcasting an alert
     - for officials messages broadcast
@@ -368,17 +399,24 @@ Defines a geographical area within which an official security agent receives all
 
 ### 6.2 Profile
 
-- Anonymous :
-  - ID (generated from device hash)
+- Standard user :
+  - ID (generated from device hash), identity is never shared
+  - Credibility score is not displayed but is part of the profile
   - Apps authorisation
     - I agree to broadcast my alerts to the nearby members of the community
-    - I agree to receive alerts when entering hotspots
-  - My Security group (sender) :
-    - my default security group pseudo 
+    - I agree to receive alerts when entering hotspots and being 
+  - My Security Group (sender) :
+    - Pseudo only for security groups
     - QR code of my security group
-    - members of my security group I validated with the pseudo I gave them
-  - Security groups I am member of (receiver) :
-    - default pseudo of the groups I may receive notification from
+    - members of my security group I validated, their pseudo can be complemented with a comment to better identify them (button to quiet or delete them)
+  - Extended Security Groups I am member of (receiver) :
+    - default pseudo of the groups I may receive notification from (I can quiet or delete/leave these groups)
+- Watchers :
+  - Email and name confirmed from another authentication service
+- First Responders :
+  - First Responder ID (first and second name)
+  - First Responder organisation (Red Cross, VISOV...)
+  - Qualification (Physician...)
 - Officials :
   - Official ID (first and second names, title)
   - Official departement ID (name, adress)
@@ -394,18 +432,22 @@ Defines a geographical area within which an official security agent receives all
 
 Components:
 - Role toggle: `Victim` / `Witness`
+- Alert type grid: Police / Fire / Unsecure / Danger / Safe (closes alert)
 - Status band: connection status + elapsed time since alert opened
-- Severity scale: Vigilance → Danger
-- Alert type grid: Police / Fire / Alert / Danger / Safe (closes alert)
 - Context bar: optional text/voice input
 - Stress meter: derived from button press frequency
-- Responder stats: watcher count, average distance, official count
+- Responder stats: geosaver, watcher and officials count and closest distance
 - Map preview: hotspot radius, moving responder dots, GPS accuracy
 
 **Interactions:**
-- Hold "Danger" for 2s to confirm (prevents accidental triggers)
-- Tap "Safe" to close the alert
-- Share button → notify friends via app push or social link
+- Hold "Danger" for 2s or confirm to open
+- Hold "Alert" for 1s or confirm to open
+- Hold "Safe" for 2s or confirm to close the alert
+- Add context to your alert, opens an alert qualification screen
+
+**Animations:**
+- When active the trigger button blinks so the user knows the status of his alert level
+
 
 ![System Overview](assets/mobile001_send_alert.svg)
 *Figure  — Mobile Screen 001 : basic sending alerts*
@@ -418,7 +460,7 @@ Components:
 - Notification card: alert type, distance, time elapsed
 - Response options: Flee / Neutral / Watch / Assist / Call
 - Map showing hotspot (emitter position approximate)
-- Watcher count for the hotspot
+- Follower/Watcher/First respondant/Official count for the hotspot
 
 | Alert notification | Hotspot map |
 |---|---|
@@ -449,8 +491,8 @@ Components:
 
 ### 7.1 Perimeter Statistics (Live / Official)
 
-- Heatmap of alert density by area and time period
-- Filterable by alert type, event type, time range
+- Heatmap of alert density by area and period of time
+- Filtered by alert type, event type, time range
 - Export for institutional reporting
 
 ### 7.2 Statistics Tiers (Civic & Institutional)
@@ -463,120 +505,13 @@ Components:
 
 ---
 
-## 8. i18n Architecture
-
-### Philosophy
-
-The app is built **English-first**. All user-facing strings are externalized into locale files. The UI language is determined at runtime from device locale, with a manual override in settings.
-
-### Directory Structure
-
-```
-i18n/
-├── en.json          ← source of truth
-├── fr.json          ← French (initial secondary locale)
-├── es.json          ← Spanish (planned)
-├── pt.json          ← Portuguese / Brazil (planned)
-├── ar.json          ← Arabic (planned, RTL support required)
-└── index.ts         ← locale loader + t() helper
-```
-
-### Key Naming Convention
-
-```
-{screen}.{component}.{element}
-```
-
-Examples:
-```json
-"alert.type.police":       "Police",
-"alert.type.fire":         "Fire & Rescue",
-"alert.type.danger":       "Danger",
-"alert.type.vigilance":    "Vigilance",
-"alert.type.safe":         "I'm Safe",
-"alert.status.transmitted": "Alert transmitted · Secure link established",
-"alert.stress.label":      "Estimated stress",
-"alert.context.placeholder": "Add context",
-"alert.context.hint":      "Optional · if situation allows",
-"alert.responders.watchers": "Nearby watchers",
-"alert.responders.distance": "Metres (avg.)",
-"alert.responders.officials": "Officials",
-"alert.map.gps":           "GPS · High accuracy",
-"nav.alert":               "Alert",
-"nav.map":                 "Map",
-"nav.history":             "History",
-"nav.profile":             "Profile",
-"role.victim":             "Victim",
-"role.witness":            "Witness",
-"severity.low":            "Alert",
-"severity.high":           "Danger",
-"network.active":          "Network active"
-```
-
-### Runtime Usage (React Native / Web)
-
-```typescript
-// i18n/index.ts
-import en from './en.json';
-import fr from './fr.json';
-
-const locales: Record<string, typeof en> = { en, fr };
-
-export function t(key: string, locale: string = 'en'): string {
-  const dict = locales[locale] ?? locales['en'];
-  return key.split('.').reduce((o: any, k) => o?.[k], dict) ?? key;
-}
-```
-
-```tsx
-// Usage in component
-import { t } from '@/i18n';
-const locale = useLocale(); // 'en' | 'fr' | 'es' ...
-
-<Text>{t('alert.type.police', locale)}</Text>
-```
-
-### RTL Support
-
-Arabic and Hebrew locales require RTL layout. Add to root component:
-
-```typescript
-import { I18nManager } from 'react-native';
-const RTL_LOCALES = ['ar', 'he'];
-if (RTL_LOCALES.includes(locale)) {
-  I18nManager.forceRTL(true);
-}
-```
-
-### Market Pivot Checklist
-
-When entering a new market, the following need locale-specific review beyond string translation:
-
-- [ ] Emergency number (`911`, `999`, `112`, `17`, `18`…) — never hardcoded, always from config
-- [ ] Official role labels (Police / Gendarmerie / Carabinieri…)
-- [ ] Legal disclaimer text
-- [ ] Privacy policy
-- [ ] Date/time format
-- [ ] Units (metric vs imperial for distance display)
-
-```typescript
-// config/market.ts
-export const MARKET_CONFIG = {
-  emergencyNumber: process.env.EMERGENCY_NUMBER ?? '112',
-  distanceUnit: process.env.DISTANCE_UNIT ?? 'metric',   // 'metric' | 'imperial'
-  officialLabel: process.env.OFFICIAL_LABEL ?? 'Police',
-};
-```
-
----
-
-## 9. Open Questions
+## 8. Open Questions
 
 1. **Mandatory qualification for Vigilance and Alert levels?** → Proposed resolution: qualification is always offered; information is collected progressively with an incentive to complete the process as far as the situation allows.
 
 2. **What does the "non-anonymous" user title add?** Is it necessary? Risk of undermining the value of anonymous status?
 
-3. **User charter** — Should a usage charter be required and signed before a user can access the application?
+3. **User charter or policy** — Should a usage charter be required and signed before a user can access the application?
 
 4. **Media attachments** — Should it be possible to attach photos or audio recordings? If so, should these be shared only with security forces?
 
@@ -586,7 +521,7 @@ export const MARKET_CONFIG = {
 
 ---
 
-## 10. Appendix — Emergency Services Reference
+## 9. Appendix — Emergency Services Reference
 
 ### France
 
