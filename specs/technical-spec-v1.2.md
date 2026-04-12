@@ -37,8 +37,13 @@ When a user emits an alert, a **hotspot** is created. The hotspot links all acto
 
 ### 2.1 Requirements
 
-- User and follower location tracking (cold + hot)
-- Hotspot victim or witness alerting: `safe` / `unsecure` / `danger` / `call force` / `call fire`
+- User location tracking
+  - cold location : for hotspot location matching. Every n hours and if move is detected.
+  - hot location : for hotspot, vigilance or disctrict area tracking
+- Hotspot alerting:
+  - `anonymous` / `watcher` / `first responder` / `official`
+  - `victim` / `witness`
+  - `safe` / `unsecure` / `danger` / `call force` / `call fire`
 - Hotspot follower confirmation: `vigilance` / `action` (officials and first responders only)
 - Message status lifecycle: `sent` → `delivered` → `read`
 - Official district management
