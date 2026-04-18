@@ -6,8 +6,12 @@ Functional and technical specifications — the source of truth for all implemen
 
 | File | Purpose |
 |------|---------|
-| `functional-spec-v1.2.md` | Full functional specification: user types, use cases, data model, alert modes, broadcasting |
-| `technical-spec-v1.2.md` | API contracts, microservice responsibilities, data codes, mobile architecture, i18n integration |
+| `functional-specification.md` | Full functional specification: user types, use cases, data model, alert modes, broadcasting |
+| `technical-specification.md` | API contracts, microservice responsibilities, data codes, mobile architecture, i18n integration |
+| `technical-architecture.md` | Microservice architecture, infrastructure decisions, deployment topology |
+| `CHANGELOG.md` | Notable changes between phases, in plain language |
+| `decisions/full-product-vision.md` | Complete product vision and long-term roadmap |
+| `decisions/mvp-functional-scope-v0.1.md` | Scoped decisions for the MVP phase |
 
 ## Rules
 

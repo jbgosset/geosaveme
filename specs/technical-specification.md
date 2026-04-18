@@ -1,6 +1,7 @@
 # SAVE ME — Technical Specifications
 
-> **Version** 1.3 — i18n: added English-first philosophy, key naming convention (moved from functional-spec)  
+> **Version** 1.4 — Added §0: Architectural Guiding Principle (agent autonomy, event-driven lifecycle)  
+> **Previous** v1.3 — i18n: added English-first philosophy, key naming convention (moved from functional-spec)  
 > **Base** GeoSaveMe Technical Spec v1.0  
 > **i18n** All user-facing strings referenced by key — see `i18n/en.json`
 
@@ -8,11 +9,85 @@
 
 ## Table of Contents
 
+0. [Architectural Guiding Principle](#0-architectural-guiding-principle)
 1. [Objectives](#1-objectives)
 2. [Functional Description](#2-functional-description)
 3. [Technical Architecture](#3-technical-architecture)
 4. [i18n Technical Integration](#4-i18n-technical-integration)
 5. [Market Configuration](#5-market-configuration)
+
+---
+
+## 0. Architectural Guiding Principle
+
+> This section is foundational. It governs the API contract, the mobile data model, the server's role, and the data model entity boundaries across all phases. All subsequent technical decisions should be read in light of it.
+
+### 0.1 Agents Are Autonomous; the Central System Is the Rule Engine
+
+Every mobile device participating in the GeoSaveMe network — whether emitter, follower, watcher, or official — is an **autonomous agent**. It maintains a local state snapshot of every hotspot it is associated with, including the last known alert type, participant count, and a version timestamp. This snapshot is sufficient to render a coherent UI and support basic interactions without a network connection.
+
+The central system does not push instructions to agents. It receives **events** from agents, applies rules, and pushes **state updates** back. Agents consuming an update replace their local snapshot only if the incoming version timestamp is more recent than their own.
+
+The platform is therefore **offline-tolerant by design**: an agent that loses connectivity degrades gracefully and re-syncs from server state on reconnection. This is not a nice-to-have — it is a safety requirement. A victim in a tunnel, a building basement, or an area of network congestion must not lose the functional state of their alert.
+
+### 0.2 All Agent-to-Server Communications Are Events
+
+An **event** is any structured signal emitted by an agent that describes a change in the agent's assessment of or relationship to a situation. Events fall into two distinct families, which must remain separate in the data model and in the API:
+
+**Alert events** — situation assessments emitted by emitters and witnesses:
+
+| Event type | Description |
+|---|---|
+| `unsecure` | Low-level concern, potential risk |
+| `danger` | Explicit request for intervention |
+| `police` | Law enforcement response required |
+| `fire` | Fire brigade or SAMU response required |
+| `secure` | Emitter signals the situation is resolved |
+
+**Participation events** — presence and position signals emitted by followers, watchers, officials, and first responders:
+
+| Event type | Description |
+|---|---|
+| `acknowledge` | Agent has seen the hotspot and engages as a participant |
+| `position_update` | Periodic hot location refresh from an active participant |
+| `qualification` | On-scene assessment submitted by a participant |
+| `response_update` | Change in declared response intent (flee / assist / call…) |
+| `departure` | Agent disengages from the hotspot |
+
+All events share a common envelope (see §3.1 geolocation payload). The `eventType` field enables the server rule engine to route and process events without inspecting payload content.
+
+**Critical:** `secure` is an alert event like any other — it is not a control command. The agent emitting `secure` is updating its situation assessment. What happens next is entirely the server's decision.
+
+### 0.3 Hotspot Lifecycle Is Owned by the Central System
+
+The central system is the sole authority over hotspot lifecycle. It receives alert events and participation events from all associated agents and applies **configurable closure rules** to decide when a hotspot transitions from `open` to `closed`.
+
+Because the rule engine lives entirely on the server and agents only emit events, **closure rules can evolve without any client update**. The MVP starts with a single rule:
+
+> *A `secure` alert event from the original emitter closes the hotspot.*
+
+Later phases will layer additional rules without touching the mobile clients:
+
+- Official on-scene qualification triggers closure
+- Quorum of participant `secure` signals triggers closure
+- Configurable inactivity timeout triggers closure
+- Server keeps a hotspot open despite an emitter `secure` signal if an official has escalated severity (the emitter may no longer be in a position to assess the situation reliably)
+
+### 0.4 Three Distinct Entities — Not One
+
+The state of an active security situation is represented by three entities with separate lifecycles. Conflating them is the most common architectural error in systems of this type.
+
+**Alert** — an event record. Immutable once delivered. Carries a situation assessment from a single agent at a point in time. Its only mutable field is its transmission status (`sent` → `delivered`). It knows nothing about who read it or what was done with it.
+
+**Hotspot** — a server-owned aggregate. Mutable. Its status (`open` / `closed`) is determined by the rule engine, never by a single alert event. It aggregates all alert events and participation events raised within its perimeter and version-stamps every state change it broadcasts to agents.
+
+**HotspotParticipation** — a relationship record between an agent and a hotspot. Created by a participation event. Updated by subsequent participation events from the same agent. Carries position, role, response intent, and timestamps. The participant count visible to the emitter is a live query on these records — it is never a stored field on the hotspot.
+
+### 0.5 What the Central System Never Does
+
+The central system never issues commands to agents. It does not tell an agent to stop alerting, change alert type, or go offline. It publishes state — agents subscribe and update their local snapshot accordingly.
+
+This boundary is operationally critical and must be enforced at the API design level: **no endpoint on the server should accept an agent ID as a target and modify that agent's behaviour**. An emitter in a dangerous situation must never have their alert suppressed by a remote actor, whether that actor is a server administrator, a rule, or another user.
 
 ---
 
@@ -29,7 +104,7 @@ The network operates on two location modes:
 - **Cold** — background, approximate, for inactive users (identifying who is near a new hotspot)
 - **Hot** — foreground, precise, for active users and followers (real-time tracking within a hotspot and its vigilance area)
 
-When a user emits an alert, a **hotspot** is created. The hotspot links all actors: the emitter, nearby civilian followers, and official forces within the district.
+When a user emits an alert event, a **hotspot** is created server-side. The hotspot links all actors: the emitter, nearby civilian followers, and official forces within the district.
 
 ---
 
@@ -38,14 +113,15 @@ When a user emits an alert, a **hotspot** is created. The hotspot links all acto
 ### 2.1 Requirements
 
 - User location tracking
-  - cold location : for hotspot location matching. Every n hours and if move is detected.
-  - hot location : for hotspot, vigilance or disctrict area tracking
-- Hotspot alerting:
+  - Cold location: for hotspot location matching. Every n hours and if move is detected.
+  - Hot location: for hotspot, vigilance or district area tracking
+- Alert event emission:
   - `anonymous` / `watcher` / `first responder` / `official`
   - `victim` / `witness`
-  - `safe` / `unsecure` / `danger` / `call force` / `call fire`
-- Hotspot follower confirmation: `vigilance` / `action` (officials and first responders only)
-- Message status lifecycle: `sent` → `delivered` → `read`
+  - `unsecure` / `danger` / `police` / `fire` / `secure`
+- Participation event emission: `acknowledge` / `qualification` / `position_update` / `response_update` / `departure`
+- Hotspot lifecycle management: `open` → `closed` (server-side rule engine only)
+- Alert transmission status: `sent` → `delivered`
 - Official district management
 - Market-configurable emergency number and official labels
 
@@ -54,41 +130,42 @@ When a user emits an alert, a **hotspot** is created. The hotspot links all acto
 #### HotSpot Service
 
 Responsibilities:
-- Create a hotspot when a first alert is posted at a location
+- Create a hotspot when a first alert event is posted at a location with no existing active hotspot
+- Evaluate closure rules on receipt of each alert event or participation event; transition hotspot to `closed` when rules are met
 - Broadcast hotspot to all relevant recipients:
   - Users inside the hotspot perimeter
   - Users near the perimeter (vigilance area — likely to enter)
   - Official forces whose district contains the hotspot
-- Orchestrate positions, messages, and alert broadcasts to all followers
-- Update followers when:
-  - Hotspot statistics change
-  - Perimeter moves or expands (emitter is moving)
-- Close hotspot when activity ceases
+- Orchestrate positions, messages, and alert broadcasts to all participants
+- Update participants when hotspot state changes (statistics, perimeter, status)
+- Version-stamp every outbound state update
 
 #### Alerts Service
 
 Responsibilities:
-- Manage the list of alerts associated within each hotspot
-- Maintain alert types: `safe` / `unsecure` / `danger` / `call force` / `call fire`
-- Maintain alert status: `sent` / `delivered` / `read`
+- Receive and store alert events from agents
+- Maintain alert types: `unsecure` / `danger` / `police` / `fire` / `secure`
+- Maintain alert transmission status: `sent` / `delivered`
+- Attach incoming alert events to the relevant hotspot
+- Forward events to the HotSpot Service for rule evaluation
 - Update hotspot perimeter when the emitter's position moves
-- Send notifications to followers
 
 #### Followers Location Service ("Hot")
 
 Responsibilities:
-- Manage user list per hotspot, typed as : `vigilance` / `follower` / `watcher` / `first responder` / `official`
-- Prioritize followers: hotspot vs. vigilance area
-- Update follower positions at high throughput
-- Broadcast locations to relevant actors
+- Manage HotspotParticipation records per hotspot
+- Typed by role: `follower` / `watcher` / `first_responder` / `official`
+- Prioritise participants by zone: hotspot vs. vigilance area
+- Update participant positions at high throughput
+- Broadcast participation state to relevant actors (emitter sees count; officials see positions)
 
 #### Users Location Service ("Cold")
 
 Responsibilities:
-- Manage all registered users locations
+- Manage all registered users' last known positions
 - Register approximate background positions
-- Identify users inside hotspot or vigilance perimeters → promote to followers
-- Maintain and update the followers list
+- Identify users inside hotspot or vigilance perimeters → promote to participants
+- Trigger participation event flow on proximity match
 
 #### Forces Management Service
 
@@ -156,13 +233,13 @@ Responsibilities:
 - When associated to a hotspot: send position every **30 seconds**
 
 **Alert emission**
-- First alert → initiates a new hotspot
-- Subsequent alert → associated to existing hotspot if within perimeter
-- Receives status callbacks: `sent` / `delivered` / `read`
+- First alert event → server creates a new hotspot
+- Subsequent alert event → server attaches to existing hotspot if within perimeter
+- Receives transmission callbacks: `sent` / `delivered`
 
 **Hotspot reception**
 - Receive new hotspot notification if inside hotspot or vigilance area
-- Subscribe to hotspot updates (statistics, perimeter changes, follower count)
+- Subscribe to hotspot state updates (version-stamped); apply only if newer than local snapshot
 
 #### Police / Official App
 
@@ -176,11 +253,11 @@ Responsibilities:
 - When associated to a hotspot: send position every **10 seconds**
 
 **Alert emission**
-- Can emit alerts (qualification, ghost alert, broadcast message)
+- Can emit alert events (qualification, ghost alert, broadcast message)
 
 **Hotspot reception**
 - Receive all hotspots within their assigned district polygon
-- Receive hotspot updates in real time
+- Receive hotspot state updates in real time
 
 ---
 
@@ -220,25 +297,28 @@ Methods:  POST (create) / GET (fetch for area) / PUT (update) / DELETE (close)
 **Hotspot object:**
 ```json
 {
-  "hotspotID":   "uuid-v4",
-  "position":    { "lat": 48.8566, "lng": 2.3522 },
-  "radius":      150,
-  "alertType":   "danger | alert | police | fire | vigilance",
-  "status":      "open | resolved",
-  "emitterID":   "hash(deviceID)",
-  "phone":       "+33XXXXXXXXX",
-  "stressLevel": 62,
-  "followers":   { "helpers": 4, "forces": 2 },
-  "createdAt":   "2024-03-01T14:30:00Z",
-  "updatedAt":   "2024-03-01T14:32:00Z"
+  "hotspotID":        "uuid-v4",
+  "position":         { "lat": 48.8566, "lng": 2.3522 },
+  "radius":           150,
+  "lastAlertType":    "unsecure | danger | police | fire | secure",
+  "status":           "open | closed",
+  "emitterID":        "hash(deviceID)",
+  "phone":            "+33XXXXXXXXX",
+  "stressLevel":      62,
+  "participantCount": { "civilians": 4, "forces": 2 },
+  "version":          "2024-03-01T14:32:00Z",
+  "createdAt":        "2024-03-01T14:30:00Z",
+  "updatedAt":        "2024-03-01T14:32:00Z"
 }
 ```
+
+> `version` is the timestamp agents use to decide whether to apply an incoming state update. `participantCount` is derived from HotspotParticipation records — never stored as a mutable field.
 
 #### Alert API
 
 ```
 Endpoint: /api/alert
-Methods:  POST (emit) / PUT (update status) / GET (list for hotspot)
+Methods:  POST (emit event) / PUT (update transmission status) / GET (list for hotspot)
 ```
 
 **Alert object:**
@@ -246,14 +326,60 @@ Methods:  POST (emit) / PUT (update status) / GET (list for hotspot)
 {
   "alertID":   "uuid-v4",
   "hotspotID": "uuid-v4",
-  "type":      "rescue | danger | alert | vigilance | unsecure | action",
-  "status":    "sent | delivered | read",
-  "context":   "optional free text or structured event type keys",
+  "emitterID": "hash(deviceID)",
+  "eventType": "unsecure | danger | police | fire | secure",
+  "status":    "sent | delivered",
+  "context":   "optional free text or structured qualification keys",
   "emittedAt": "2024-03-01T14:30:00Z"
 }
 ```
 
-### 3.2 Mobile Architecture
+#### Participation API
+
+```
+Endpoint: /api/participation
+Methods:  POST (acknowledge / join) / PUT (update position or response) / DELETE (depart)
+```
+
+**HotspotParticipation object:**
+```json
+{
+  "participationID": "uuid-v4",
+  "hotspotID":       "uuid-v4",
+  "agentID":         "hash(deviceID)",
+  "role":            "follower | watcher | first_responder | official",
+  "position":        { "lat": 48.8566, "lng": 2.3522, "accuracy": 22.0 },
+  "response":        "acknowledge | flee | neutral | assist | call",
+  "joinedAt":        "2024-03-01T14:31:00Z",
+  "lastSeenAt":      "2024-03-01T14:32:00Z"
+}
+```
+
+### 3.2 Common Event Envelope
+
+All agent-to-server communications — both alert events and participation events — share a common geolocation envelope. The `eventType` field enables the server rule engine to route events without inspecting payload content.
+
+```json
+{
+  "mobileID":  "hash(deviceID)",
+  "hotspotID": "hash(deviceID + timestamp)",
+  "source":    "base | alert | follower | official",
+  "eventType": "unsecure | danger | police | fire | secure | acknowledge | position_update | qualification | response_update | departure",
+  "position": {
+    "type":      "cold | hot",
+    "lat":       48.8566,
+    "lng":       2.3522,
+    "accuracy":  12.5,
+    "timestamp": "2026-04-01T14:32:00Z",
+    "provider":  "GPS_PROVIDER | NETWORK_PROVIDER"
+  },
+  "cinetic":   "still | onslowmove | onfastmove"
+}
+```
+
+> `hotspotID` is `null` for cold background position updates.
+
+### 3.3 Mobile Architecture
 
 #### Cold Location — Android Components
 
@@ -271,11 +397,22 @@ Methods:  POST (emit) / PUT (update status) / GET (list for hotspot)
 
 #### Hot Location — Active Tracking
 
-When a user becomes a hotspot follower (helper or force):
+When a user becomes a hotspot participant (helper or force):
 - `HotLocationService` starts in foreground with persistent notification
 - Polls GPS at configured interval (30s helper / 10s force)
-- Posts to `/api/userlocation` with `PRIORITY_HIGH_ACCURACY`
-- Stops when hotspot closes or user disengages
+- Posts participation event to `/api/participation` with `PRIORITY_HIGH_ACCURACY`
+- Stops when hotspot closes or agent disengages
+
+#### Local State Snapshot — Agent Cache
+
+Each agent maintains a local cache of hotspot state snapshots:
+
+- Keyed by `hotspotID`
+- Each snapshot carries the `version` timestamp from the last server update
+- On receiving a hotspot update, agent compares incoming `version` to local `version`; applies only if newer
+- On reconnection after offline period, agent requests a full state refresh for each active hotspot it is associated with
+
+This cache is the mechanism that makes agents offline-tolerant. It must be implemented before any other hotspot UI feature.
 
 #### Push Notification Architecture
 
@@ -291,10 +428,11 @@ Messaging Service ──► FCM (Android) ──► Helper App
 Notification payload:
 ```json
 {
-  "type":      "new_hotspot | hotspot_update | official_broadcast",
+  "type":      "new_hotspot | hotspot_update | hotspot_closed | official_broadcast",
   "hotspotID": "uuid-v4",
   "alertType": "danger",
   "distance":  142,
+  "version":   "2026-04-01T14:32:00Z",
   "locale":    "en"
 }
 ```
@@ -322,13 +460,13 @@ The app is built **English-first**. The active locale is determined at runtime f
 Keys follow the pattern `{screen}.{component}.{element}`:
 
 ```
-alert.type.police       → "Police"
-alert.type.danger       → "Danger"
+alert.type.police        → "Police"
+alert.type.danger        → "Danger"
 alert.status.transmitted → "Alert transmitted · Secure link established"
-alert.stress.label      → "Estimated stress"
+alert.stress.label       → "Estimated stress"
 alert.context.placeholder → "Add context to your alert…"
-nav.alert               → "Alert"
-role.victim             → "Victim"
+nav.alert                → "Alert"
+role.victim              → "Victim"
 ```
 
 Add new keys at the bottom of the relevant section in `en.json`. Never rename or remove existing keys — they are public contracts.
@@ -351,18 +489,16 @@ i18n/
 {
   "alert": {
     "type": {
-      "police":     "Police",
-      "fire":       "Fire & Rescue",
-      "alert":      "Alert",
-      "danger":     "Danger",
-      "vigilance":  "Vigilance",
-      "safe":       "I'm Safe"
+      "police":    "Police",
+      "fire":      "Fire & Rescue",
+      "unsecure":  "Unsecure",
+      "danger":    "Danger",
+      "secure":    "I'm Safe"
     },
     "status": {
       "transmitted": "Alert transmitted · Secure link established",
       "sent":        "Sent",
-      "delivered":   "Delivered",
-      "read":        "Read"
+      "delivered":   "Delivered"
     },
     "stress": {
       "label": "Estimated stress"
@@ -391,7 +527,7 @@ i18n/
     "witness": "Witness"
   },
   "severity": {
-    "low":  "Alert",
+    "low":  "Unsecure",
     "high": "Danger"
   },
   "network": {
@@ -399,6 +535,8 @@ i18n/
   }
 }
 ```
+
+> Note: the `alert.status.read` key has been removed. Read state is a hotspot-level concern (which participants have seen the hotspot), not an alert transmission status.
 
 ### TypeScript Helper
 

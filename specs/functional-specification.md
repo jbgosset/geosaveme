@@ -54,10 +54,46 @@ The app operates on **real-time local proximity**. Alerts are never broadcast gl
 2. A **hotspot** is created at their GPS location
 3. Nearby users receive a push notification and can choose to respond
 4. Officials in the district see the hotspot on their map `[Phase 2]`
-5. The alert remains open until the emitter closes it
+5. The alert remains open until the server closes the hotspot based on defined rules
 6. Button press frequency is logged to estimate stress level `[Phase 2]`
 
-### 1.3 Design Constraints
+### 1.3 Architectural Principle — Agent Autonomy and Event-Driven Lifecycle `[MVP]`
+
+This principle is foundational. It governs the API contract, the mobile data model, and the server's role across all phases. It must be understood before reading any screen or use case.
+
+#### Agents are autonomous; the central system is the rule engine
+
+Every mobile device participating in the GeoSaveMe network — whether emitter, follower, watcher, or official — is an **autonomous agent**. It maintains a local state snapshot of every hotspot it is associated with, including the last known alert type, participant count, and a version timestamp. This snapshot is sufficient to render a coherent UI and support basic interactions without a network connection.
+
+The central system does not push instructions to agents. It receives **events** from agents, applies rules, and pushes **state updates** back. Agents consuming an update replace their local snapshot only if the incoming version timestamp is more recent than their own. The platform is therefore **offline-tolerant by design**: an agent that loses connectivity degrades gracefully and re-syncs from server state on reconnection.
+
+#### All agent-to-server communications are events
+
+An **event** is any structured signal emitted by an agent that describes a change in the agent's assessment of or relationship to a situation. Events fall into two families:
+
+- **Alert events** — situation assessments emitted by emitters and witnesses: `unsecure`, `danger`, `police`, `fire`, `secure`. The `secure` signal is an alert event like any other — it is not a command to close the hotspot. It is a signal the server receives and evaluates.
+- **Participation events** — presence signals emitted by followers, watchers, officials, and first responders: acknowledging a hotspot, updating position, changing response type, departing.
+
+There is no semantic distinction between "opening" and "closing" from the agent's perspective. Both are events transmitted to the server using the same envelope structure.
+
+#### Hotspot lifecycle is owned by the central system
+
+The central system is the sole authority over hotspot lifecycle. It receives alert events and participation events from all associated agents and applies **configurable closure rules** to decide when a hotspot transitions from `open` to `closed`. In the MVP, the rule is:
+
+> *If the original emitter sends a `secure` alert event, the hotspot is closed.*
+
+This rule will evolve without requiring client updates. Future rules may include:
+
+- Hotspot closed when an official on scene emits a `secure` qualification
+- Hotspot closed when a quorum of followers independently emit `secure` signals
+- Hotspot closed after a configurable inactivity timeout
+- Hotspot kept open by the server despite an emitter `secure` signal, if an official has escalated severity
+
+#### What the central system never does
+
+The central system never issues commands to agents. It does not tell an agent to stop alerting, change alert type, or go offline. It publishes state — agents subscribe and update their local snapshot. This boundary is operationally critical: an emitter in a dangerous situation must never have their alert suppressed by a remote actor.
+
+### 1.4 Design Constraints
 
 - **Anonymous by default** — public users have no account, no password, no personal profile
 - **No social media sharing** — prevents viral amplification and mob behaviour
@@ -97,7 +133,7 @@ A person who feels in danger, is the victim of an aggression, or witnesses an in
 - Selects role: Victim or Witness
 - Taps alert type (unsecure / danger / police / fire)
 - Keeps the alert open until resolved
-- Closes alert when safe (taps Secure, hold 2s to confirm)
+- Signals resolution by tapping Secure (hold 2s to confirm), which emits a `secure` alert event
 
 **Privacy:** fully anonymous. No account required. Identified only by a hashed device ID.
 
@@ -116,7 +152,7 @@ A member of the public geographically near an active hotspot.
 **Key behaviours:**
 - Receives push notification when a nearby hotspot opens
 - Opens app from notification, sees hotspot on map
-- Taps Acknowledge — becomes a follower, shares approximate position
+- Taps Acknowledge — emits a participation event, shares approximate position
 - Their count is shown to the emitter as reassurance
 
 **Privacy:** position shared only approximately, not precisely.
@@ -136,7 +172,7 @@ A verified professional from a security or emergency service (police, gendarmeri
 - Authenticated via a verified organisational account
 - Receives real-time alerts within their assigned district
 - Sees alert details including emitter phone number (for emergency call correlation)
-- Qualifies a hotspot once on scene
+- Qualifies a hotspot once on scene — emitting a qualification participation event
 - Can operate in stealth mode (hidden from public map)
 - Can emit ghost alerts visible only to forces
 
@@ -151,7 +187,7 @@ A dispatcher operating a district-level surveillance dashboard.
 **Key behaviours:**
 - Views district map with live hotspot pins
 - Matches incoming call phone numbers to hotspot pins
-- Clicks pin to see alert details, follower count, stress level
+- Clicks pin to see alert details, participant count, stress level
 - Broadcasts targeted messages to a hotspot area
 
 ---
@@ -211,8 +247,8 @@ A validated member of a recognised civil rescue association (Red Cross, VISOV, p
 | Actor | Emitter (victim or witness) |
 | Precondition | App installed, location permission granted (foreground + background), push permission granted |
 | Trigger | User taps an alert type button |
-| Main flow | 1. User opens app  2. Selects role: Victim or Witness  3. Taps alert type (Unsecure / Danger / Police / Fire)  4. App captures GPS position with high accuracy  5. Hotspot created server-side  6. Push notification sent to all users within radius  7. Status band shows elapsed time and connection status |
-| Post-condition | Hotspot is active and visible to nearby followers |
+| Main flow | 1. User opens app  2. Selects role: Victim or Witness  3. Taps alert type (Unsecure / Danger / Police / Fire)  4. App captures GPS position with high accuracy  5. Alert event transmitted to server  6. Server creates hotspot and stores delivered alert  7. Push notification sent to all users within radius  8. Status band shows elapsed time and connection status |
+| Post-condition | Hotspot is `open` and visible to nearby followers; alert status is `delivered` |
 | Deferred | Context / qualification form `[Phase 2]`, stress meter `[Phase 2]`, ghost mode `[Phase 2]`, security group broadcast `[Phase 2]` |
 
 ---
@@ -224,21 +260,22 @@ A validated member of a recognised civil rescue association (Red Cross, VISOV, p
 | Actor | Follower (bystander) |
 | Precondition | App installed, background location running (cold), push notifications granted |
 | Trigger | A hotspot is created within the follower proximity radius |
-| Main flow | 1. System matches follower cold position to hotspot perimeter  2. Push notification delivered: alert type + distance  3. Follower opens app  4. Map view shows hotspot (approximate emitter position)  5. Follower taps Acknowledge — position shared (hot, approximate)  6. Emitter sees follower count increment |
-| Post-condition | Follower is registered as a watcher on the hotspot |
+| Main flow | 1. Server matches follower cold position to hotspot perimeter  2. Push notification delivered: alert type + distance  3. Follower opens app  4. Map view shows hotspot (approximate emitter position)  5. Follower taps Acknowledge — participation event transmitted (hot, approximate position)  6. Emitter sees participant count increment |
+| Post-condition | Follower is registered as a participant on the hotspot via a HotspotParticipation record |
 | Deferred | Response options (Flee / Assist / Call) `[Phase 2]`, follower-to-emitter messaging `[Phase 2]`, credibility update `[Phase 2]` |
 
 ---
 
-### 4.3 UC-03 — Close an Alert `[MVP]`
+### 4.3 UC-03 — Signal Resolution (Emitter) `[MVP]`
 
 | Field | Value |
 |---|---|
 | Actor | Emitter |
 | Trigger | User taps Secure button (hold 2s to confirm) |
-| Main flow | 1. Alert status set to closed  2. Hotspot deactivated server-side  3. Push sent to followers: hotspot resolved  4. Location tracking reverts to cold mode |
-| Post-condition | Hotspot archived; no more notifications sent |
-| Deferred | Post-event qualification `[Phase 2]`, duration statistics export `[Phase 3]` |
+| Main flow | 1. App transmits a `secure` alert event to server  2. Server evaluates active closure rules  3. If rules are met: hotspot status set to `closed`, push sent to all participants — hotspot resolved, location tracking reverts to cold mode for all agents  4. If rules are not met: server acknowledges event; hotspot remains open pending further signals |
+| Post-condition | If closed: hotspot archived, no further notifications sent. If not yet closed: emitter UI reflects the signal was received; hotspot remains active. |
+| Note | In the MVP, the closure rule is: a `secure` event from the original emitter closes the hotspot. This rule is server-side and will be extended in later phases without requiring client changes. |
+| Deferred | Post-event qualification `[Phase 2]`, official-triggered closure `[Phase 2]`, quorum closure `[Phase 3]`, duration statistics export `[Phase 3]` |
 
 ---
 
@@ -273,13 +310,13 @@ The emitter or a witness adds structured context to an active alert. Qualificati
 
 ### 4.6 UC-06 — Official Receives Hotspot (Patrol) `[Phase 2]`
 
-The officer receives a hotspot notification on their mobile within their district. They see alert type, follower count, and emitter phone number (if authorised). They navigate to the scene and qualify the hotspot on arrival.
+The officer receives a hotspot notification on their mobile within their district. They see alert type, participant count, and emitter phone number (if authorised). They navigate to the scene and emit a qualification participation event on arrival.
 
 ---
 
 ### 4.7 UC-07 — Official Matches Call to Hotspot (Surveillance Centre) `[Phase 2]`
 
-A call comes in simultaneously with a hotspot pin appearing on the district map. The dispatcher matches the phone number on the call to the pin and clicks it to see full context: alert type, stress level, qualifications, follower count.
+A call comes in simultaneously with a hotspot pin appearing on the district map. The dispatcher matches the phone number on the call to the pin and clicks it to see full context: alert type, stress level, qualifications, participant count.
 
 ---
 
@@ -291,13 +328,13 @@ The emitter opts to alert their personal security group. Members receive a push 
 
 ### 4.9 UC-09 — Post-Event Alert `[Phase 2]`
 
-A user reports an event after the fact — because they could not do so safely at the time, or to contribute to statistical awareness. Creates a time-stamped record without an active hotspot.
+A user reports an event after the fact — because they could not do so safely at the time, or to contribute to statistical awareness. Creates a time-stamped alert record without an active hotspot.
 
 ---
 
 ### 4.10 UC-10 — Ghost Alert `[Phase 2]`
 
-The emitter activates ghost mode before emitting. The alert is sent only to security professionals — not broadcast to nearby civilians. Used when local broadcast could provoke counter-aggression.
+The emitter activates ghost mode before emitting. The alert event is sent only to security professionals — not broadcast to nearby civilians. Used when local broadcast could provoke counter-aggression.
 
 ---
 
@@ -315,11 +352,15 @@ A user registers a tracking device (AirTag equivalent). They are alerted when th
 
 ## 5. Alert Data Model
 
+This section describes the three distinct entities that together represent the state of an active security situation: **Alert**, **Hotspot**, and **HotspotParticipation**. They are separate entities with separate lifecycles, fed by the two families of agent events described in §1.3.
+
 ### 5.1 Alert Types `[MVP]`
+
+Alert events are situation assessments emitted by agents. All types share the same event envelope. `secure` is not a control signal — it is an alert type like any other, evaluated by the server's closure rule engine.
 
 | Key | Label | Severity | Phase |
 |---|---|---|---|
-| `secure` | Secure (close alert) | 0 | MVP |
+| `secure` | Secure (signals resolution to server) | 0 | MVP |
 | `unsecure` | Unsecure | 1 — Low | MVP |
 | `danger` | Danger | 2 — High | MVP |
 | `police` | Police Call | 3 — Emergency | MVP |
@@ -327,35 +368,68 @@ A user registers a tracking device (AirTag equivalent). They are alerted when th
 
 ### 5.2 Alert Status `[MVP]`
 
+Alert status reflects transmission reliability only — the lifecycle of the situation itself is tracked on the Hotspot entity (§5.3), not on individual alerts.
+
 | Status | Description |
 |---|---|
-| `sent` | Alert created on device, awaiting server confirmation |
-| `delivered` | Server has received and stored the alert |
-| `read` | At least one follower has acknowledged the notification |
-| `closed` | Emitter has tapped Secure to close the alert |
+| `sent` | Alert event created on device, transmitted to server, awaiting ACK |
+| `delivered` | Server confirmed receipt and attached the event to the hotspot |
 
-### 5.3 Alert Qualification `[Phase 2]`
+There is no `read` status on an alert. Whether and by whom a hotspot's associated alerts have been reviewed is a property of the hotspot and its participation records, not of any individual alert event.
 
-See UC-05 for qualification dimensions. Qualification is always optional and asynchronous — never blocks alert emission.
+### 5.3 Hotspot Status `[MVP]`
 
-### 5.4 Alert Modes `[Phase 2]`
+The hotspot is the server-owned lifecycle entity. Its status is determined exclusively by the central system's rule engine, not by any single agent action.
+
+| Status | Description |
+|---|---|
+| `open` | Hotspot is active; alert events and participation events are being collected; followers are being notified |
+| `closed` | Hotspot lifecycle has ended; no further broadcasts; all associated agents receive a closure notification |
+| `archived` *(Phase 3)* | Closed hotspot retained in the historical record for statistics and reporting |
+
+Closure rules are server-side and configurable. In the MVP:
+- A `secure` alert event from the original emitter closes the hotspot.
+
+In later phases, additional rules will be layered without client changes:
+- Official on-scene qualification triggers closure
+- Quorum of participant `secure` signals triggers closure
+- Configurable inactivity timeout triggers closure
+
+### 5.4 HotspotParticipation `[MVP]`
+
+A participation record represents the relationship between an agent and a hotspot. It is created when a follower acknowledges a hotspot and updated as the agent's position or response changes. It is distinct from an alert event: it carries no situation assessment, only presence and position data.
+
+| Field | Notes | Phase |
+|---|---|---|
+| `agentID` | Hashed device ID of the participant | MVP |
+| `hotspotID` | Linked hotspot | MVP |
+| `role` | `follower` \| `watcher` \| `first_responder` \| `official` | MVP / Phase 2 |
+| `position` | Hot location snapshot; approximate for followers, precise for officials | MVP |
+| `joinedAt` | Timestamp of first acknowledgement event | MVP |
+| `lastSeenAt` | Timestamp of last position update event | MVP |
+| `response` | `acknowledge` \| `flee` \| `neutral` \| `assist` \| `call` | Phase 2 |
+| `qualification` | On-scene hotspot validation emitted by the participant | Phase 2 |
+
+The participant count displayed to the emitter is a live query on HotspotParticipation records for that hotspot — it is derived, never stored as a field on the hotspot itself.
+
+### 5.5 Alert Modes `[Phase 2]`
 
 | Mode | Description |
 |---|---|
 | **Standard** | Alert broadcast locally to nearby users and officials |
-| **Ghost** | Alert sent to security professionals only — not broadcast locally |
+| **Ghost** | Alert event sent to security professionals only — not broadcast locally |
 | **Private** | Alert broadcast to security group members only |
-| **Stealth** *(pro only)* | Official not shown on public map near intervention area |
+| **Stealth** *(pro only)* | Official's participation record not shown on public map near intervention area |
 | **Remote / Delayed** | Hotspot created after the fact with a specified time and location |
 
-### 5.5 Issuer Position `[Phase 2]`
+### 5.6 Issuer Position `[Phase 2]`
 
 | Position | Notes |
 |---|---|
 | **Witness** *(default)* | Preferred for qualification and assisting responders |
 | **Victim** | Personal target — must be explicitly activated by the user |
 
-### 5.6 User Credibility `[Phase 2]`
+### 5.7 User Credibility `[Phase 2]`
 
 Credibility scores are transmitted to security forces only. Not shown to the emitter. Not permanent — evolves over time.
 
@@ -367,13 +441,16 @@ Credibility scores are transmitted to security forces only. Not shown to the emi
 | **0.5** | Statistically excessive submissions not corroborated by others |
 | **0** | Alert on a hotspot subsequently qualified as a false alarm by security forces |
 
-### 5.7 Geolocation Payload `[MVP]`
+### 5.8 Geolocation Payload `[MVP]`
+
+All agent-to-server communications — both alert events and participation events — share a common geolocation envelope. The `source` field distinguishes event families.
 
 ```json
 {
   "mobileID":  "hash(deviceID)",
   "hotspotID": "hash(deviceID + timestamp)",
-  "source":    "base | alert | follower",
+  "source":    "base | alert | follower | official",
+  "eventType": "unsecure | danger | police | fire | secure | acknowledge | position_update | qualification",
   "position": {
     "type":      "cold | hot",
     "lat":       48.8566,
@@ -386,7 +463,8 @@ Credibility scores are transmitted to security forces only. Not shown to the emi
 }
 ```
 
-> `hotspotID` is `null` for cold background updates.
+> `hotspotID` is `null` for cold background position updates.  
+> `eventType` enables the server rule engine to route and process events without inspecting payload content.
 
 ---
 
@@ -394,13 +472,20 @@ Credibility scores are transmitted to security forces only. Not shown to the emi
 
 ### 6.1 Hotspot Creation `[MVP]`
 
-- Created server-side on receipt of the first alert from an emitter not already associated with an active hotspot
-- Perimeter radius: fixed at 500 m for MVP
-- All users whose last cold position falls within the perimeter receive a push notification
-- Hotspot persists until emitter closes it or server timeout (30 min inactivity)
-- All subsequent alerts raised within the perimeter are attached to the existing hotspot
+A hotspot is created server-side on receipt of the first alert event from an emitter not already associated with an active hotspot. The hotspot is the aggregation point for two independent event streams:
 
-### 6.2 Hot Location — Active Users `[MVP]`
+- **Alert events** from emitters and witnesses — carry situation assessment
+- **Participation events** from followers, watchers, and officials — carry presence and position
+
+The server processes these streams independently. Hotspot state (status, participant count, stress level, credibility) is computed from both streams but derived separately for each dimension. No single event type has authority over all hotspot state.
+
+**MVP parameters:**
+- Perimeter radius: fixed at 500 m
+- All users whose last cold position falls within the perimeter receive a push notification
+- Hotspot persists until server closure rules are met, or server timeout (30 min inactivity)
+- All subsequent alert events raised within the perimeter are attached to the existing hotspot
+
+### 6.2 Hot Location — Active Agents `[MVP]`
 
 | Actor | Update Frequency | Accuracy | Provider |
 |---|---|---|---|
@@ -447,11 +532,11 @@ Groups broadcast alerts independently of location — members receive notificati
 
 ### 6.6 Force District `[Phase 2]`
 
-Defines a geographic area within which an official receives all alerts, can broadcast messages, and can qualify hotspots.
+Defines a geographic area within which an official receives all alerts, can broadcast messages, and can emit qualification events on hotspots.
 
 ### 6.7 Hotspot Credibility & Collaborative Thread `[Phase 2]`
 
-- Users arriving at a hotspot can validate its reality, increasing its credibility score
+- Agents arriving at a hotspot can emit a validation participation event, increasing the hotspot's credibility score
 - A collaborative communication thread is shared exclusively with professionals and first responders
 
 ---
@@ -480,14 +565,14 @@ Defines a geographic area within which an official receives all alerts, can broa
 **MVP components:**
 - Role toggle: Victim / Witness
 - Alert type grid: Police / Fire / Unsecure / Danger
-- Secure button (closes alert, hold 2s to confirm)
+- Secure button (signals resolution, hold 2s to confirm — emits `secure` alert event to server)
 - Status band: connection status + elapsed time since alert opened
-- Map preview: hotspot radius, GPS accuracy tag, responder count
+- Map preview: hotspot radius, GPS accuracy tag, participant count
 
 **Interactions:**
 - Hold Danger 2s or confirm to open
 - Hold Unsecure 1s or confirm to open
-- Hold Secure 2s or confirm to close
+- Hold Secure 2s or confirm — emits `secure` event; server evaluates closure rules
 
 **Deferred:**
 - Context bar: optional text input `[Phase 2]`
@@ -518,8 +603,8 @@ Defines a geographic area within which an official receives all alerts, can broa
 **MVP components:**
 - Map centred on hotspot
 - Approximate emitter pin
-- Follower count
-- Acknowledge button
+- Participant count (live query on HotspotParticipation records)
+- Acknowledge button (emits participation event)
 
 **Deferred:**
 - Follower-to-emitter messaging `[Phase 2]`
@@ -556,16 +641,16 @@ Defines a geographic area within which an official receives all alerts, can broa
 
 - Full district map with live hotspot pins
 - Pin icon reflects alert type; pin colour reflects severity
-- Click pin → alert details, emitter phone number (subscription), follower list, stress level
+- Click pin → alert details, emitter phone number (subscription), participant list, stress level
 - Phone number matching: incoming call number highlights the matching pin
-- Broadcast message to all followers of a hotspot area
+- Broadcast message to all participants of a hotspot area
 
 ---
 
 ### 7.7 History `[Phase 2]`
 
 - Chronological list of past alerts in a given area
-- Per-alert detail: type, duration, follower count, official response time
+- Per-alert detail: type, duration, participant count, official response time
 - Available to freemium users (T+1 day), real-time for officials
 
 ---
@@ -587,12 +672,13 @@ Questions not yet resolved, grouped by the phase in which they need an answer.
 ### Before MVP launch
 
 - Should a usage charter be required and accepted before first use?
+- What is the exact server timeout for hotspot inactivity closure? (Proposed: 30 min — to be validated with field data)
 
 ### Before Phase 2
 
-- Should alert qualification be mandatory or always optional for Vigilance and Alert levels?
+- Should alert qualification be mandatory or always optional for Unsecure and Danger levels?
 - Should media attachments (photo / audio) be possible, and if so shareable only with security forces?
-- What is the optimal hotspot timeout? (Currently 30 min — to be validated with field data from MVP)
+- What closure rules beyond emitter `secure` should be implemented first: official qualification, inactivity timeout, or participant quorum?
 - Should user gender be recorded for sexual assault qualification? Current assessment: limited benefit, opens profiling risk.
 
 ### Before Phase 3
