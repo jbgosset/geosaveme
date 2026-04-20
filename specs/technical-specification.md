@@ -1,7 +1,7 @@
 # SAVE ME — Technical Specifications
 
-> **Version** 1.4 — Added §0: Architectural Guiding Principle (agent autonomy, event-driven lifecycle)  
-> **Previous** v1.3 — i18n: added English-first philosophy, key naming convention (moved from functional-spec)  
+> **Version** 1.5 — Rate limiting principle clarified in §2.3 API Gateway (throttle-not-suppress); `/api/sync` endpoint contract referenced from ADR-10; agent cache data structure formalised in §3.3; fan-out via BullMQ made explicit in §2.2 and §3.3  
+> **Previous** v1.4 — Added §0: Architectural Guiding Principle (agent autonomy, event-driven lifecycle)  
 > **Base** GeoSaveMe Technical Spec v1.0  
 > **i18n** All user-facing strings referenced by key — see `i18n/en.json`
 
@@ -54,7 +54,7 @@ An **event** is any structured signal emitted by an agent that describes a chang
 | `response_update` | Change in declared response intent (flee / assist / call…) |
 | `departure` | Agent disengages from the hotspot |
 
-All events share a common envelope (see §3.1 geolocation payload). The `eventType` field enables the server rule engine to route and process events without inspecting payload content.
+All events share a common envelope (see §3.2). The `eventType` field enables the server rule engine to route and process events without inspecting payload content.
 
 **Critical:** `secure` is an alert event like any other — it is not a control command. The agent emitting `secure` is updating its situation assessment. What happens next is entirely the server's decision.
 
@@ -71,7 +71,7 @@ Later phases will layer additional rules without touching the mobile clients:
 - Official on-scene qualification triggers closure
 - Quorum of participant `secure` signals triggers closure
 - Configurable inactivity timeout triggers closure
-- Server keeps a hotspot open despite an emitter `secure` signal if an official has escalated severity (the emitter may no longer be in a position to assess the situation reliably)
+- Server keeps a hotspot open despite an emitter `secure` signal if an official has escalated severity
 
 ### 0.4 Three Distinct Entities — Not One
 
@@ -139,6 +139,7 @@ Responsibilities:
 - Orchestrate positions, messages, and alert broadcasts to all participants
 - Update participants when hotspot state changes (statistics, perimeter, status)
 - Version-stamp every outbound state update
+- **Enqueue fan-out push jobs to BullMQ immediately on hotspot creation — never dispatch FCM push notifications synchronously on the request thread** (see ADR-09)
 
 #### Alerts Service
 
@@ -188,6 +189,14 @@ Responsibilities:
 - Authentication routing (anonymous users vs. verified officials)
 - Rate limiting and abuse protection
 
+**Rate limiting principle — throttle, never suppress:**
+
+Rate limiting operates at the ingestion layer and must never silently discard an alert event. An agent that exceeds the rate limit receives a `429 Too Many Requests` response with a `Retry-After` header indicating when it may retry. The mobile client retries automatically after the specified interval; the event is not lost.
+
+This distinction is operationally critical and derives directly from the safety principle in §0.5. Silent dropping would constitute the server suppressing an agent's ability to emit — which is never permitted. Throttling with retry is an acceptable flow-control mechanism; silent discard is not.
+
+Rate limits apply per `mobileID` (hashed device ID), not per IP address, to correctly attribute limits to individual agents regardless of network topology. Limits are applied separately to alert events and participation events, with alert events given higher priority headroom.
+
 #### Settings Service
 
 - Administration parameters
@@ -236,10 +245,12 @@ Responsibilities:
 - First alert event → server creates a new hotspot
 - Subsequent alert event → server attaches to existing hotspot if within perimeter
 - Receives transmission callbacks: `sent` / `delivered`
+- On `429` response: retry automatically after `Retry-After` interval — never drop the event silently
 
 **Hotspot reception**
 - Receive new hotspot notification if inside hotspot or vigilance area
 - Subscribe to hotspot state updates (version-stamped); apply only if newer than local snapshot
+- On reconnection after any offline period: call `POST /api/sync` with current position and known hotspot state map (see §3.1 Sync API and §3.3 Agent Cache)
 
 #### Police / Official App
 
@@ -263,7 +274,7 @@ Responsibilities:
 
 ## 3. Technical Architecture
 
-### 3.1 Microservices
+### 3.1 API Endpoints
 
 #### Users Location API
 
@@ -355,6 +366,42 @@ Methods:  POST (acknowledge / join) / PUT (update position or response) / DELETE
 }
 ```
 
+#### Sync API `[Phase 2]`
+
+```
+Endpoint: /api/sync
+Methods:  POST
+```
+
+Contract defined in ADR-10. Implementation deferred to Phase 2. The mobile cache data structure (§3.3) must support this contract from MVP day one.
+
+**Request:**
+```json
+{
+  "mobileID": "hash(deviceID)",
+  "position": {
+    "lat": 48.8566, "lng": 2.3522,
+    "accuracy": 22.0, "timestamp": "2026-04-01T14:32:00Z"
+  },
+  "knownHotspots": [
+    { "hotspotID": "uuid-v4", "version": "2026-04-01T14:30:00Z" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "updates":  [{ "hotspotID": "uuid-v4", "status": "open | closed", "lastAlertType": "danger", "version": "2026-04-01T14:35:00Z" }],
+  "closures": [{ "hotspotID": "uuid-v4", "closedAt": "2026-04-01T14:33:00Z" }],
+  "nearby":   [{ "hotspotID": "uuid-v4", "alertType": "police", "distance": 180, "version": "2026-04-01T14:34:00Z" }]
+}
+```
+
+- `updates` — known hotspots whose server version is newer than the agent's cached version
+- `closures` — known hotspots that have since closed
+- `nearby` — hotspots that opened near the agent's position while it was offline, unknown to the agent
+
 ### 3.2 Common Event Envelope
 
 All agent-to-server communications — both alert events and participation events — share a common geolocation envelope. The `eventType` field enables the server rule engine to route events without inspecting payload content.
@@ -405,24 +452,51 @@ When a user becomes a hotspot participant (helper or force):
 
 #### Local State Snapshot — Agent Cache
 
-Each agent maintains a local cache of hotspot state snapshots:
+Each agent maintains a local cache of hotspot state snapshots. This cache is the mechanism that makes agents offline-tolerant and the data source for the `POST /api/sync` reconciliation request. **It must be implemented before any other hotspot UI feature.**
 
-- Keyed by `hotspotID`
-- Each snapshot carries the `version` timestamp from the last server update
-- On receiving a hotspot update, agent compares incoming `version` to local `version`; applies only if newer
-- On reconnection after offline period, agent requests a full state refresh for each active hotspot it is associated with
+**Cache data structure:**
 
-This cache is the mechanism that makes agents offline-tolerant. It must be implemented before any other hotspot UI feature.
+```typescript
+interface HotspotCacheEntry {
+  hotspotID:           string
+  status:              'open' | 'closed'
+  lastAlertType:       string
+  participantCount:    { civilians: number; forces: number }
+  version:             string  // ISO timestamp of the last server update applied
+  lastUpdatedLocally:  string  // ISO timestamp of the last local write
+}
+
+type HotspotCache = Map<string, HotspotCacheEntry>
+```
+
+**Cache rules:**
+- On receiving a hotspot state update from the server: apply only if incoming `version` is strictly newer than the cached `version` for that `hotspotID`
+- On receiving a hotspot closure notification: set `status` to `closed`, retain the entry — do not delete, it is needed to confirm closure was received during the next sync
+- On reconnection after any offline period: call `POST /api/sync` with current position and the full `{ hotspotID, version }` map extracted from the cache; apply the response diff before rendering any UI
+- Cache entries for closed hotspots may be pruned after 24 hours
+
+**Known MVP limitation:** `/api/sync` is not implemented in the MVP. Agents that go offline and reconnect during the two-user MVP test must restart the app to re-sync. This is a documented and accepted limitation at MVP scale.
+
+#### Fan-out — BullMQ Worker
+
+Push notification dispatch is never on the synchronous request path. On hotspot creation or state change requiring a push:
+
+1. HotSpot Service enqueues a fan-out job to BullMQ immediately, keyed by `hotspotID`
+2. BullMQ worker dequeues the job, queries PostGIS for users within the hotspot radius, and dispatches FCM push notifications in batches
+3. Worker reports completion or failure back to BullMQ; failed jobs are retried with exponential backoff
+4. Queue is partitioned by `hotspotID` — jobs for one hotspot cannot starve dispatch for another
 
 #### Push Notification Architecture
 
 ```
 HotSpot Service
       │
+      ▼ (enqueue — never inline dispatch)
+BullMQ / Redis
+      │
       ▼
-Messaging Service ──► FCM (Android) ──► Helper App
-                  └──► APNs (iOS)   ──► Helper App
-                  └──► WebSocket    ──► Forces Web UI
+Worker process ──► FCM (Android + iOS via APNs) ──► Helper App
+               └──► WebSocket ──────────────────────► Forces Web UI
 ```
 
 Notification payload:
@@ -437,7 +511,7 @@ Notification payload:
 }
 ```
 
-The `locale` field drives which string keys are resolved on the receiving device, not on the server — **server never sends user-facing strings, only keys and data.**
+The `locale` field drives which string keys are resolved on the receiving device — **the server never sends user-facing strings, only keys and data.**
 
 ---
 
@@ -460,13 +534,13 @@ The app is built **English-first**. The active locale is determined at runtime f
 Keys follow the pattern `{screen}.{component}.{element}`:
 
 ```
-alert.type.police        → "Police"
-alert.type.danger        → "Danger"
-alert.status.transmitted → "Alert transmitted · Secure link established"
-alert.stress.label       → "Estimated stress"
+alert.type.police         → "Police"
+alert.type.danger         → "Danger"
+alert.status.transmitted  → "Alert transmitted · Secure link established"
+alert.stress.label        → "Estimated stress"
 alert.context.placeholder → "Add context to your alert…"
-nav.alert                → "Alert"
-role.victim              → "Victim"
+nav.alert                 → "Alert"
+role.victim               → "Victim"
 ```
 
 Add new keys at the bottom of the relevant section in `en.json`. Never rename or remove existing keys — they are public contracts.
@@ -500,21 +574,17 @@ i18n/
       "sent":        "Sent",
       "delivered":   "Delivered"
     },
-    "stress": {
-      "label": "Estimated stress"
-    },
+    "stress":  { "label": "Estimated stress" },
     "context": {
       "placeholder": "Add context to your alert…",
       "hint":        "Optional · if situation allows"
     },
     "responders": {
-      "watchers":   "Nearby watchers",
-      "distance":   "Metres (avg.)",
-      "officials":  "Officials"
+      "watchers":  "Nearby watchers",
+      "distance":  "Metres (avg.)",
+      "officials": "Officials"
     },
-    "map": {
-      "gps": "GPS · High accuracy"
-    }
+    "map": { "gps": "GPS · High accuracy" }
   },
   "nav": {
     "alert":   "Alert",
@@ -522,21 +592,13 @@ i18n/
     "history": "History",
     "profile": "Profile"
   },
-  "role": {
-    "victim":  "Victim",
-    "witness": "Witness"
-  },
-  "severity": {
-    "low":  "Unsecure",
-    "high": "Danger"
-  },
-  "network": {
-    "active": "Network active"
-  }
+  "role":     { "victim": "Victim", "witness": "Witness" },
+  "severity": { "low": "Unsecure", "high": "Danger" },
+  "network":  { "active": "Network active" }
 }
 ```
 
-> Note: the `alert.status.read` key has been removed. Read state is a hotspot-level concern (which participants have seen the hotspot), not an alert transmission status.
+> `alert.status.read` has been removed. Read state is a hotspot-level concern, not an alert transmission status.
 
 ### TypeScript Helper
 
@@ -546,7 +608,6 @@ import en from './en.json';
 import fr from './fr.json';
 import es from './es.json';
 
-type LocaleKey = keyof typeof en;
 const locales: Record<string, typeof en> = { en, fr, es };
 
 export function t(key: string, locale: string = 'en'): string {
@@ -587,10 +648,10 @@ All market-specific values are externalized into environment config. Never hardc
 ```typescript
 // config/market.ts
 export interface MarketConfig {
-  emergencyNumber:   string;   // '911' | '999' | '112' | '17' | '000' ...
+  emergencyNumber:   string;
   distanceUnit:      'metric' | 'imperial';
-  officialLabel:     string;   // 'Police' | 'Gendarmerie' | 'Carabinieri' ...
-  defaultLocale:     string;   // 'en' | 'fr' | 'es' ...
+  officialLabel:     string;
+  defaultLocale:     string;
   supportedLocales:  string[];
   privacyPolicyUrl:  string;
   termsUrl:          string;

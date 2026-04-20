@@ -1,7 +1,7 @@
 # SAVE ME — Technical Architecture Document
 
-> **Version** 0.1  
-> **Date** April 2026  
+> **Version** 0.2 — Added ADR-09 (Fan-out scaling), ADR-10 (Agent reconciliation protocol), MT-06 (BullMQ queue depth), DD-12 (hotspot merge strategy); rate limiting principle clarified in §2 API Gateway  
+> **Previous** v0.1 — April 2026  
 > **Status** Approved — MVP  
 > **Derives from** `SAVEME_MVP_Functional_Scope_v0.1.md`
 
@@ -19,6 +19,8 @@
    - [ADR-06 Backend Language & Framework](#adr-06-backend-language--framework)
    - [ADR-07 Deployment Infrastructure](#adr-07-deployment-infrastructure)
    - [ADR-08 Location Data Layer](#adr-08-location-data-layer)
+   - [ADR-09 Fan-out Scaling Strategy](#adr-09-fan-out-scaling-strategy)
+   - [ADR-10 Agent Reconciliation Protocol](#adr-10-agent-reconciliation-protocol)
 3. [Monitoring & Trigger Points](#3-monitoring--trigger-points)
 4. [Scaling Ladder](#4-scaling-ladder)
 5. [Deferred Decisions](#5-deferred-decisions)
@@ -379,6 +381,154 @@ Postgres write throughput > 5,000 writes/second sustained, with hot location upd
 
 ---
 
+### ADR-09 Fan-out Scaling Strategy
+
+**Status:** Approved — MVP (contract defined); implementation scales with load
+
+**Context:**
+When a hotspot opens, the server must dispatch push notifications to every user whose last cold position falls within the hotspot perimeter. At two-user MVP scale this is trivial. At city scale during a mass incident — a stadium evacuation, a demonstration — a single hotspot could require notifying thousands of devices simultaneously, and hundreds of hotspots could open within minutes of each other.
+
+The fan-out pipeline is the single highest-throughput operation in the system. Its design must be correct from day one, even if it runs at near-zero load during the MVP.
+
+**Options considered:**
+
+| Option | Description |
+|---|---|
+| Synchronous dispatch on request thread | Notify all users inline during hotspot creation HTTP request |
+| Single async worker via BullMQ | Decouple dispatch from request path; single worker processes queue |
+| BullMQ with horizontally scalable workers | Same as above, workers are stateless and can be scaled independently |
+| Dedicated fan-out service (separate process) | Extract fan-out into its own deployable, independently scalable service |
+
+**Decision:** BullMQ on Redis with stateless, horizontally scalable workers. Synchronous dispatch is explicitly prohibited. Worker count starts at one for MVP and scales with MT-06 trigger.
+
+**Rationale:**
+- Synchronous dispatch blocks the hotspot creation response until every push is sent — unacceptable at any meaningful scale and creates a direct coupling between FCM latency and API response time
+- BullMQ is already present in the stack (ADR-06) — fan-out is an additional job type on the existing queue infrastructure, not a new component
+- Workers are stateless Node.js processes: scaling from one to N workers is a single configuration change with no code modification
+- BullMQ provides job retries, dead-letter queues, and visibility into queue depth — all required for a safety-critical notification pipeline
+- A dedicated fan-out service (Option 4) is the right long-term architecture but premature at MVP; BullMQ workers are the stepping stone to it
+
+**Queue partitioning — day-one implementation requirement:**
+The BullMQ queue must be partitioned by `hotspotID` from day one. All push jobs for a given hotspot are routed to the same logical queue partition. This ensures that fan-out for one hotspot cannot starve or delay fan-out for another — a critical property during multi-hotspot mass incidents. This is a configuration choice within BullMQ, not a new infrastructure component.
+
+**Tradeoffs accepted:**
+- BullMQ workers share the Node.js event loop with the main app process at MVP scale — acceptable at low load; the MT-06 trigger prompts extraction to dedicated worker processes before this becomes a problem
+- Redis is a single point of failure for the dispatch queue — mitigated by Fly.io managed Redis with automatic failover; a Redis outage delays push dispatch but does not lose jobs (BullMQ persists to Redis before acknowledging)
+
+**Scaling path (no architectural changes required):**
+
+| Stage | Worker configuration | Approximate capacity |
+|---|---|---|
+| MVP | 1 worker, co-located with app | ~50 concurrent hotspots |
+| Phase 2 | 2–4 dedicated worker processes on separate Fly.io instances | ~500 concurrent hotspots |
+| Phase 3+ | N workers, auto-scaled on queue depth | Unbounded — linear scaling |
+
+**Revisit trigger:**
+MT-06: BullMQ queue depth sustained above 1,000 jobs for more than 5 minutes. At that point add dedicated worker instances (separate from the main app instance) before increasing worker count further.
+
+---
+
+### ADR-10 Agent Reconciliation Protocol
+
+**Status:** Approved — contract defined for MVP; `/api/sync` endpoint implemented in Phase 2
+
+**Context:**
+Agents maintain a local state snapshot of every hotspot they are associated with (established in `technical-specification.md` §0.1 and §3.3). This snapshot enables offline-tolerant operation. However, the current spec underspecifies what happens when an agent reconnects after a period of disconnection.
+
+The naive approach — "refresh known hotspot IDs" — is insufficient. An agent that was offline when a hotspot closed and a new one opened nearby will have a stale `open` entry in its cache and will be unaware of the new hotspot entirely. Its local state is not just stale — it is structurally incomplete.
+
+This is a safety issue, not just a UX issue. An emitter whose phone died and recharged during an active hotspot must not silently re-enter an incorrect state.
+
+**Options considered:**
+
+| Option | Description |
+|---|---|
+| Refresh known hotspot IDs only | Agent sends known hotspot IDs; server returns updated state for each |
+| Pull-on-reconnect with position | Agent sends position + known hotspot state map; server returns full diff |
+| Server-push on reconnect | Server detects reconnection and pushes relevant state proactively |
+
+**Decision:** Pull-on-reconnect with position via a dedicated `POST /api/sync` endpoint. Contract defined now; implementation deferred to Phase 2. Mobile cache data structure designed for MVP to support this contract from day one.
+
+**Rationale:**
+- Option 1 (refresh known IDs only) fails the structural incompleteness case: the agent cannot ask for hotspots it doesn't know exist
+- Option 3 (server-push on reconnect) requires the server to detect reconnection events, which is fragile across polling and push architectures — there is no reliable reconnection signal from a cold device
+- Option 2 gives the server everything it needs to compute a complete diff: what the agent knew, and where the agent is now
+- Defining the contract now constrains the mobile cache data structure to be sync-ready from the start. Retrofitting this later would require a breaking change to the cache schema
+
+**`POST /api/sync` — contract definition:**
+
+Request:
+```json
+{
+  "mobileID": "hash(deviceID)",
+  "position": {
+    "lat": 48.8566,
+    "lng": 2.3522,
+    "accuracy": 22.0,
+    "timestamp": "2026-04-01T14:32:00Z"
+  },
+  "knownHotspots": [
+    { "hotspotID": "uuid-v4", "version": "2026-04-01T14:30:00Z" },
+    { "hotspotID": "uuid-v4", "version": "2026-04-01T14:28:00Z" }
+  ]
+}
+```
+
+Response:
+```json
+{
+  "updates": [
+    {
+      "hotspotID": "uuid-v4",
+      "status": "open | closed",
+      "lastAlertType": "danger",
+      "version": "2026-04-01T14:35:00Z"
+    }
+  ],
+  "closures": [
+    { "hotspotID": "uuid-v4", "closedAt": "2026-04-01T14:33:00Z" }
+  ],
+  "nearby": [
+    {
+      "hotspotID": "uuid-v4",
+      "alertType": "police",
+      "distance": 180,
+      "version": "2026-04-01T14:34:00Z"
+    }
+  ]
+}
+```
+
+- `updates` — hotspots the agent knew about whose server version is newer than the agent's cached version
+- `closures` — hotspots the agent knew about that have since closed
+- `nearby` — hotspots that opened near the agent's reported position while it was offline, and that the agent has no record of
+
+**Mobile cache data structure — day-one MVP requirement:**
+
+The mobile cache must store `hotspotID → { state, version }` pairs, not just hotspot state. This is the minimum structure required to construct the `knownHotspots` array in the sync request. If implemented as a flat state map without versions, the sync endpoint cannot be adopted without a cache schema migration.
+
+```typescript
+interface HotspotCacheEntry {
+  hotspotID:     string
+  status:        'open' | 'closed'
+  lastAlertType: string
+  version:       string   // ISO timestamp — the version of the last server update applied
+  participantCount: { civilians: number; forces: number }
+  lastUpdatedLocally: string
+}
+
+type HotspotCache = Map<string, HotspotCacheEntry>
+```
+
+**Tradeoffs accepted:**
+- `/api/sync` endpoint is not implemented in MVP — agents that go offline during the two-user MVP test will need to restart the app to re-sync (acceptable at MVP scale; documented as a known limitation)
+- The sync response `nearby` field requires a geospatial query at sync time — same PostGIS query as hotspot creation fan-out, no new infrastructure
+
+**Revisit trigger:**
+First report of an agent re-entering incorrect hotspot state after a real connectivity loss (not a controlled test). At that point implement the `/api/sync` endpoint as a Phase 2 priority, using the contract defined here.
+
+---
+
 ## 3. Monitoring & Trigger Points
 
 All metrics must be exposed via a `/metrics` endpoint on the backend, scraped by a monitoring stack (Fly.io metrics + an external alerting tool such as Grafana Cloud free tier or Uptime Robot for MVP).
@@ -450,6 +600,22 @@ Alerts fire when a metric is sustained above threshold for **30 minutes minimum*
 
 **Response:**
 Implement SSE + Redis pub/sub (ADR-04 Phase 2 upgrade). Polling endpoints remain as fallback. This is a good problem — it means real user volume.
+
+---
+
+### MT-06 — BullMQ Queue Depth > 1,000 Jobs sustained > 5 minutes
+
+**Measured by:** BullMQ `queue.getWaitingCount()` exposed on `/metrics`; alert on sustained depth, not transient spikes
+
+**What it signals:** Fan-out workers are not keeping pace with push job creation rate. Either a high-volume incident is generating exceptional load, or worker capacity is structurally insufficient.
+
+**Response:**
+1. Check whether a single exceptional hotspot is the source (one large-radius hotspot in a dense area) — if so, monitor; this is expected burst behaviour
+2. If sustained across multiple hotspots → add dedicated BullMQ worker instances on separate Fly.io machines (see ADR-09 scaling path, Phase 2 configuration)
+3. Confirm queue partitioning by `hotspotID` is active — if not, implement immediately (ADR-09 day-one requirement)
+4. If queue depth continues to grow after adding workers → escalate to ADR-09 Phase 3 auto-scaling configuration
+
+**Note:** A growing queue does not affect alert emission or hotspot creation — those are synchronous and unaffected by worker throughput. It affects only the time between hotspot creation and follower notification. Monitor `time-to-first-notification` as a secondary metric alongside queue depth.
 
 ---
 
@@ -550,3 +716,7 @@ Items explicitly deferred from the architecture discussion. Each has a defined t
 | DD-09 | Self-hosted Postgres on Hetzner | Phase 3 | Fly.io managed Postgres reaching maximum instance tier |
 | DD-10 | Multi-region deployment | Phase 4 | Step 4→5 scaling triggers all met simultaneously |
 | DD-11 | Sharding | Phase 4+ | Not anticipated. Revisit only if multi-region Step 5 proves insufficient — extremely high bar. |
+| DD-12 | Hotspot merge strategy | Phase 2 | Pending dedicated design session. Direction: server-side correlation and merge via rule engine (merge-not-deduplicate), not creation-time prevention. See discussion notes. |
+| DD-13 | Hotspot closure safety guards | Phase 2 | Pending persona and security context analysis. Covers: minimum open duration, official veto of emitter `secure` signal. |
+| DD-14 | `/api/sync` endpoint implementation | Phase 2 | First confirmed agent reconnection producing incorrect hotspot state in production. Contract defined in ADR-10. |
+| DD-15 | BullMQ dedicated worker processes | Phase 2 | MT-06 trigger: queue depth > 1,000 jobs sustained > 5 minutes |

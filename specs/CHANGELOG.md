@@ -15,7 +15,62 @@ Versioning follows `MAJOR.MINOR.PATCH` — phases increment MINOR.
 
 ---
 
-## [Spec] — Architectural Decisions — Pre-MVP — 2026-04-18
+## [Spec] — Architectural Decisions — Session 2 — 2026-04-18
+
+### Context
+
+Second pre-MVP architectural session. Three decisions recorded: fan-out scaling strategy, agent reconciliation protocol, and the rate limiting safety principle. Two items explicitly parked for later design sessions with direction captured.
+
+These decisions are captured in full in:
+- `docs/technical-architecture.md` ADR-09, ADR-10, MT-06, DD-12–DD-15
+- `docs/technical-specification.md` v1.5 §2.2, §2.3, §3.1, §3.3
+
+### Decision 3 — Fan-out Scaling Strategy (ADR-09)
+
+**What changed:** BullMQ worker horizontal scaling is named as the explicit fan-out strategy. Synchronous dispatch on the request thread is prohibited. Queue partitioning by `hotspotID` is a day-one implementation requirement.
+
+**Why it matters:** Fan-out is the highest-throughput operation in the system. Getting this wrong at MVP has no consequence (two users), but implementing it correctly from the start costs almost nothing and prevents a structural refactor later. BullMQ is already in the stack — this is a configuration and discipline decision, not a new component.
+
+**Specific consequences for MVP implementation:**
+- HotSpot Service must enqueue push jobs to BullMQ immediately on hotspot creation — never inline
+- BullMQ queue must be partitioned by `hotspotID` from day one
+- Worker process is co-located with the app in MVP; extraction to dedicated Fly.io instances is the Phase 2 scaling step (MT-06 trigger)
+- MT-06 monitoring trigger added: queue depth > 1,000 jobs sustained > 5 minutes → add worker instances
+
+### Decision 4 — Agent Reconciliation Protocol (ADR-10)
+
+**What changed:** A `POST /api/sync` endpoint contract is defined. The endpoint is not implemented in MVP but the mobile cache data structure must support it from day one.
+
+**Why it matters:** The current spec said "agent requests a full state refresh on reconnection" without defining the mechanism. An agent that was offline when a hotspot closed and a new one opened nearby has a structurally incomplete cache — it cannot ask for hotspots it doesn't know exist. The sync endpoint solves this by combining position + known state into a single pull-on-reconnect request, letting the server compute a complete diff.
+
+**Specific consequences for MVP implementation:**
+- Mobile cache must store `{ hotspotID → { state, version } }` pairs, not flat state — required to construct the sync request
+- `HotspotCacheEntry` TypeScript interface is defined in `technical-specification.md` §3.3 — implement exactly this structure
+- Known MVP limitation documented: agents that go offline during the two-user test must restart the app to re-sync; this is accepted at MVP scale
+- `/api/sync` implementation added to Phase 2 scope (DD-14)
+
+### Decision 5 — Rate Limiting Principle
+
+**What changed:** The API Gateway rate limiting behaviour is now specified as throttle-not-suppress. Added to `technical-specification.md` §2.3.
+
+**Why it matters:** A naive rate limiter that silently drops events on threshold breach would violate the safety principle in §0.5 — the server must never suppress an agent's alert, even indirectly. The correct behaviour is `429` with `Retry-After`; the client retries; the event is not lost.
+
+**Specific consequences for MVP implementation:**
+- Rate limits applied per `mobileID`, not per IP address
+- Alert events and participation events have separate rate limit buckets, with alert events given higher priority headroom
+- Mobile client must implement automatic retry on `429` for all event submission endpoints
+
+### Parked — Hotspot Merge Strategy (DD-12)
+
+Direction captured, implementation deferred to Phase 2 design session. The approach is **merge-not-deduplicate**: rather than preventing two hotspots from being created for the same incident, the rule engine will detect overlapping hotspots post-creation and merge them into a unified aggregate. This is consistent with the event-sourcing model, non-destructive (no events are lost), and extensible (merge can later be triggered by official judgment, not just proximity rules). Agents holding a merged hotspot ID receive a redirect state update pointing them to the merged hotspot.
+
+### Parked — Hotspot Closure Safety Guards (DD-13)
+
+Deferred pending persona and security context analysis. Covers: minimum open duration before a `secure` event can trigger closure, and official veto capability. These require functional design decisions about personas and security contexts before they can become ADRs.
+
+---
+
+## [Spec] — Architectural Decisions — Session 1 — 2026-04-18
 
 ### Context
 
@@ -97,7 +152,7 @@ Full scope decisions and rationale: `docs/decisions/mvp-functional-scope-v0.1.md
 - HotspotParticipation: created on follower acknowledgement; carries role, position, timestamps
 - Common event envelope with `eventType` field for server-side routing
 - Geolocation payload: cold and hot position, cinetic state, provider
-- Agent local snapshot cache with version-based update logic
+- Agent local snapshot cache (`HotspotCacheEntry` with version) — sync-ready structure required from day one
 
 **Hotspot**
 - Server-side hotspot creation on first alert event
@@ -112,7 +167,18 @@ Full scope decisions and rationale: `docs/decisions/mvp-functional-scope-v0.1.md
 - `/api/userlocation` — cold and hot position updates
 - `/api/hotspot` — hotspot creation, fetch, state updates
 - `/api/alert` — alert event emission and transmission status
-- `/api/participation` — follower acknowledgement and position updates (new)
+- `/api/participation` — follower acknowledgement and position updates
+- `/api/sync` — contract defined (ADR-10); implementation deferred to Phase 2
+
+**Fan-out**
+- BullMQ async push dispatch — never synchronous on request thread
+- Queue partitioned by `hotspotID` from day one
+- Single co-located worker process for MVP; horizontal scaling via MT-06 trigger
+
+**Rate limiting**
+- Per `mobileID`, not per IP
+- `429` + `Retry-After` on threshold breach — never silent discard
+- Alert events given higher priority headroom than participation events
 
 **Screens**
 - S-01 Alert Emission: role toggle, alert type grid, status band, map preview, participant count
@@ -140,10 +206,17 @@ Full scope decisions and rationale: `docs/decisions/mvp-functional-scope-v0.1.md
 | AC-06 | Background battery drain in cold location mode | < 5% / hour (30 min test) |
 | AC-07 | Onboarding completion (permissions granted) | < 3 taps on both platforms |
 | AC-08 | Agent resumes correct hotspot state after 60s network loss | Local snapshot matches server state on reconnect |
+| AC-09 | Alert event on `429` rate limit → automatic retry → event delivered | Server log confirms delivery after retry |
+| AC-10 | BullMQ fan-out job enqueued within 200ms of hotspot creation | BullMQ job timestamp vs hotspot `createdAt` |
+
+### Known MVP limitations
+
+- `/api/sync` not implemented: agents that go offline and reconnect must restart the app to re-sync hotspot state
+- BullMQ worker is co-located with app process: under exceptional load (not expected at two-user scale) worker throughput could affect app instance performance
 
 ### Deferred to Phase 2
 
-Alert qualification, stress meter, ghost mode, security groups, official patrol app, surveillance centre web dashboard, credibility scoring, stealth mode, post-event alerts, watcher and first responder authentication, phone number matching, broadcast messages from officials, extended closure rules (official qualification, participant quorum).
+Alert qualification, stress meter, ghost mode, security groups, official patrol app, surveillance centre web dashboard, credibility scoring, stealth mode, post-event alerts, watcher and first responder authentication, phone number matching, broadcast messages from officials, extended closure rules (official qualification, participant quorum), `/api/sync` implementation, BullMQ dedicated worker processes (MT-06 trigger), hotspot merge strategy design.
 
 ### Deferred to Phase 3
 
@@ -164,6 +237,10 @@ Media attachments, freemium statistics, safe escort, tracker registration, quoru
 - Official patrol mobile app (authentication, district alerts, hotspot qualification)
 - Surveillance centre web dashboard (map, phone number matching, broadcast)
 - Extended closure rules: official qualification trigger, inactivity timeout validation
+- `/api/sync` endpoint implementation (ADR-10)
+- Hotspot merge strategy design and implementation (DD-12)
+- Hotspot closure safety guards design (DD-13, pending persona analysis)
+- BullMQ dedicated worker processes if MT-06 triggered
 - Credibility scoring
 - Watcher authentication
 - Post-event alerts
